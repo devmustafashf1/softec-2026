@@ -8,6 +8,7 @@ import AccountDetailScreen from '../screens/AccountDetailScreen';
 import ClientLoginScreen from '../screens/client/ClientLoginScreen';
 import ClientTabs from './ClientTabs';
 import ClientPaymentProofScreen from '../screens/client/ClientPaymentProofScreen';
+import UsersScreen from '../screens/UsersScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -23,6 +24,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Register"      component={RegisterScreen} />
         <Stack.Screen name="Main"          component={MainTabs} />
         <Stack.Screen name="AccountDetail" component={AccountDetailScreen} />
+        <Stack.Screen name="Users"         component={UsersScreen} />
 
         {/* Client portal */}
         <Stack.Screen name="ClientLogin"        component={ClientLoginScreen} />

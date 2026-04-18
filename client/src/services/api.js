@@ -94,6 +94,36 @@ export const api = {
     return request('/auth/me');
   },
 
+  // Client login via username (not email)
+  async clientLogin({ username, password }) {
+    const data = await request('/auth/client-login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
+    await tokenStorage.setToken(data.token);
+    await tokenStorage.setRefreshToken(data.refresh_token);
+    return data; // { token, refresh_token, user: { username, full_name, total_balance, ... } }
+  },
+
+  // ── User management (admin) ───────────────────────────────
+  async listUsers() {
+    return request('/users');
+  },
+
+  async createUser({ fullName, username, password, companyName, totalBalance, amountPaid, nextReview, accountStatus }) {
+    return request('/users', {
+      method: 'POST',
+      body: JSON.stringify({ fullName, username, password, companyName, totalBalance, amountPaid, nextReview, accountStatus }),
+    });
+  },
+
+  async toggleUserStatus(id, is_active) {
+    return request(`/users/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_active }),
+    });
+  },
+
   // Exchange refresh token for a new access token
   async refreshToken() {
     const refresh_token = await tokenStorage.getRefreshToken();

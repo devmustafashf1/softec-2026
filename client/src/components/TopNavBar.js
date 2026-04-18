@@ -17,11 +17,12 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.78, 300);
 
 const MENU_ITEMS = [
-  { key: 'Dashboard', label: 'Dashboard',  icon: '⊞', desc: 'Portfolio overview' },
-  { key: 'Accounts',  label: 'Accounts',   icon: '🗂', desc: 'Manage accounts'  },
-  { key: 'Reports',   label: 'Reports',    icon: '📊', desc: 'Analytics & data'  },
-  { key: 'Messages',  label: 'Messages',   icon: '💬', desc: 'Communications'   },
-  { key: 'Payments',  label: 'Payments',   icon: '💳', desc: 'Payment records'   },
+  { key: 'Dashboard', label: 'Dashboard',  icon: '⊞', desc: 'Portfolio overview', isTab: true  },
+  { key: 'Accounts',  label: 'Accounts',   icon: '🗂', desc: 'Manage accounts',   isTab: true  },
+  { key: 'Reports',   label: 'Reports',    icon: '📊', desc: 'Analytics & data',  isTab: true  },
+  { key: 'Messages',  label: 'Messages',   icon: '💬', desc: 'Communications',    isTab: true  },
+  { key: 'Payments',  label: 'Payments',   icon: '💳', desc: 'Payment records',   isTab: true  },
+  { key: 'Users',     label: 'Users',      icon: '👥', desc: 'Manage client users', isTab: false },
 ];
 
 export default function TopNavBar({ navigation, showBack = false }) {
@@ -59,13 +60,19 @@ export default function TopNavBar({ navigation, showBack = false }) {
     });
   };
 
-  const navigateTo = (tabName) => {
+  const navigateTo = (item) => {
     closeDrawer(() => {
+      if (!item.isTab) {
+        // Stack screen — navigate from root navigator
+        const rootNav = navigation.getParent() ?? navigation;
+        rootNav.navigate(item.key);
+        return;
+      }
       const state = navigation.getState?.();
       if (state?.type === 'tab') {
-        navigation.navigate(tabName);
+        navigation.navigate(item.key);
       } else {
-        navigation.navigate('Main', { screen: tabName });
+        navigation.navigate('Main', { screen: item.key });
       }
     });
   };
@@ -133,7 +140,7 @@ export default function TopNavBar({ navigation, showBack = false }) {
               <TouchableOpacity
                 key={item.key}
                 style={styles.drawerItem}
-                onPress={() => navigateTo(item.key)}
+                onPress={() => navigateTo(item)}
                 activeOpacity={0.7}
               >
                 <View style={styles.drawerItemIcon}>

@@ -110,6 +110,59 @@ export async function me(req, res) {
   return res.status(200).json({ user: req.user });
 }
 
+// ── POST /api/auth/client-login ──────────────────────────────
+// Clients log in with username + password (never their internal email)
+export async function clientLogin(req, res) {
+  const { username, password } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'username and password are required' });
+  }
+
+  // Resolve internal email from username in profiles
+  const { data: profile, error: profileError } = await supabaseAdmin
+    .from('profiles')
+    .select('id, full_name, company_name, total_balance, amount_paid, next_review, account_status, is_active')
+    .eq('username', username.toLowerCase())
+    .eq('role', 'client')
+    .single();
+
+  if (profileError || !profile) {
+    return res.status(401).json({ error: 'Invalid username or password' });
+  }
+
+  if (!profile.is_active) {
+    return res.status(403).json({ error: 'Account is deactivated. Contact an administrator.' });
+  }
+
+  const internalEmail = `${username.toLowerCase()}@client.sovereign.local`;
+
+  const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+    email: internalEmail,
+    password,
+  });
+
+  if (error) {
+    return res.status(401).json({ error: 'Invalid username or password' });
+  }
+
+  return res.status(200).json({
+    token:         data.session.access_token,
+    refresh_token: data.session.refresh_token,
+    expires_at:    data.session.expires_at,
+    user: {
+      id:             data.user.id,
+      username:       username.toLowerCase(),
+      full_name:      profile.full_name,
+      company_name:   profile.company_name,
+      total_balance:  profile.total_balance,
+      amount_paid:    profile.amount_paid,
+      next_review:    profile.next_review,
+      account_status: profile.account_status,
+    },
+  });
+}
+
 // ── POST /api/auth/refresh ────────────────────────────────────
 // Exchanges a refresh_token for a new access_token.
 export async function refresh(req, res) {

@@ -11,24 +11,28 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, FONTS, SIZES } from '../../constants/theme';
+import { api } from '../../services/api';
 
 export default function ClientLoginScreen({ navigation }) {
-  const [identity, setIdentity] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async () => {
-    if (!identity.trim() || !password.trim()) {
-      Alert.alert('Missing Fields', 'Please enter your Client ID or Email and password.');
+    if (!username.trim() || !password.trim()) {
+      Alert.alert('Missing Fields', 'Please enter your username and password.');
       return;
     }
     setLoading(true);
-    // TODO: wire to backend
-    setTimeout(() => {
+    try {
+      const data = await api.clientLogin({ username: username.trim(), password });
+      navigation.replace('ClientMain', { user: data.user });
+    } catch (err) {
+      Alert.alert('Access Denied', err.message || 'Invalid credentials.');
+    } finally {
       setLoading(false);
-      navigation.replace('ClientMain');
-    }, 800);
+    }
   };
 
   return (
@@ -53,19 +57,18 @@ export default function ClientLoginScreen({ navigation }) {
 
         {/* Form card */}
         <View style={styles.card}>
-          {/* Identity */}
-          <Text style={styles.label}>IDENTITY</Text>
+          {/* Username */}
+          <Text style={styles.label}>USERNAME</Text>
           <View style={styles.inputWrapper}>
             <Text style={styles.inputIcon}>👤</Text>
             <TextInput
               style={styles.input}
-              placeholder="Client ID or Email"
+              placeholder="Your username"
               placeholderTextColor={COLORS.grayLight}
-              value={identity}
-              onChangeText={setIdentity}
+              value={username}
+              onChangeText={setUsername}
               autoCapitalize="none"
               autoCorrect={false}
-              keyboardType="email-address"
             />
           </View>
 
