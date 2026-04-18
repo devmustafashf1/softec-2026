@@ -6,7 +6,7 @@ import RegisterScreen from '../screens/RegisterScreen';
 import MainTabs from './MainTabs';
 import AccountDetailScreen from '../screens/AccountDetailScreen';
 import ClientLoginScreen from '../screens/client/ClientLoginScreen';
-import ClientTabs from './ClientTabs';
+import ClientDashboardScreen from '../screens/client/ClientDashboardScreen';
 import ClientPaymentProofScreen from '../screens/client/ClientPaymentProofScreen';
 import UsersScreen from '../screens/UsersScreen';
 
@@ -28,7 +28,7 @@ export default function AppNavigator() {
 
         {/* Client portal */}
         <Stack.Screen name="ClientLogin"        component={ClientLoginScreen} />
-        <Stack.Screen name="ClientMain"         component={ClientTabs} />
+        <Stack.Screen name="ClientMain"         component={ClientDashboardScreen} />
         <Stack.Screen name="ClientPaymentProof" component={ClientPaymentProofScreen} />
       </Stack.Navigator>
     </NavigationContainer>

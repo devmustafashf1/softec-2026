@@ -46,6 +46,7 @@ export default function AccountDetailScreen({ route, navigation }) {
   const [messagesLoading, setMessagesLoading] = useState(true);
   const [statusChanging, setStatusChanging]   = useState(false);
   const [generating, setGenerating]           = useState(false);
+  const [deletingId, setDeletingId]           = useState(null);
 
   const status    = account.account_status || account.status || 'CURRENT';
   const statusCfg = STATUS_CONFIG[status] || STATUS_BADGE_FALLBACK;
@@ -88,6 +89,55 @@ export default function AccountDetailScreen({ route, navigation }) {
               Alert.alert('Error', err.message || 'Could not update status.');
             } finally {
               setStatusChanging(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleDeleteMessage = (msg) => {
+    Alert.alert(
+      'Delete Message',
+      'Are you sure you want to delete this message?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingId(msg.id);
+            try {
+              await api.deleteMessage(account.id, msg.id);
+              setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+            } catch (err) {
+              Alert.alert('Error', err.message || 'Could not delete message.');
+            } finally {
+              setDeletingId(null);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleSendMessage = (msg) => {
+    Alert.alert(
+      'Send Follow-up',
+      'Send this message to the client portal?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send',
+          onPress: async () => {
+            try {
+              await api.sendMessage(account.id, msg.id);
+              setMessages((prev) =>
+                prev.map((m) => m.id === msg.id ? { ...m, is_sent: true } : m)
+              );
+              Alert.alert('Sent', 'Message delivered to the client portal.');
+            } catch (err) {
+              Alert.alert('Error', err.message || 'Could not send message.');
             }
           },
         },
@@ -204,18 +254,55 @@ export default function AccountDetailScreen({ route, navigation }) {
               contextChip = <Text style={styles.pendingChip}>Payment pending</Text>;
             }
 
+            const isDeleting = deletingId === msg.id;
+
             return (
               <View key={msg.id} style={styles.messageCard}>
+                {/* Message header: status badge + time */}
                 <View style={styles.messageCardHeader}>
                   <View style={styles.messageMetaRow}>
                     <View style={[styles.msgStatusBadge, { backgroundColor: cfg.bg }]}>
                       <Text style={[styles.msgStatusText, { color: cfg.text }]}>{s}</Text>
                     </View>
                     {contextChip}
+                    {msg.is_sent ? (
+                      <View style={styles.sentChip}>
+                        <Text style={styles.sentChipText}>✓ Sent</Text>
+                      </View>
+                    ) : null}
                   </View>
                   <Text style={styles.messageTime}>{timeAgo(msg.created_at)}</Text>
                 </View>
+
+                {/* Message body */}
                 <Text style={styles.messageContent}>{msg.content}</Text>
+
+                {/* Divider */}
+                <View style={styles.messageDivider} />
+
+                {/* Action buttons — right-aligned */}
+                <View style={styles.messageActions}>
+                  <TouchableOpacity
+                    style={styles.sendBtn}
+                    onPress={() => handleSendMessage(msg)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.sendBtnText}>Send</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.deleteBtn, isDeleting && styles.actionDisabled]}
+                    onPress={() => handleDeleteMessage(msg)}
+                    disabled={isDeleting}
+                    activeOpacity={0.8}
+                  >
+                    {isDeleting ? (
+                      <ActivityIndicator color="#E74C3C" size="small" />
+                    ) : (
+                      <Text style={styles.deleteBtnText}>Delete</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
               </View>
             );
           })
@@ -359,6 +446,43 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
+  messageDivider: {
+    height: 1,
+    backgroundColor: COLORS.border || '#EFEFEF',
+    marginTop: 12,
+    marginBottom: 10,
+  },
+  messageActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  sendBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: COLORS.navy,
+  },
+  sendBtnText: {
+    color: COLORS.white,
+    fontSize: SIZES.xs,
+    ...FONTS.bold,
+    letterSpacing: 0.4,
+  },
+  deleteBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: '#FDECEA',
+    borderWidth: 1,
+    borderColor: '#F5C6C0',
+  },
+  deleteBtnText: {
+    color: '#E74C3C',
+    fontSize: SIZES.xs,
+    ...FONTS.bold,
+    letterSpacing: 0.4,
+  },
   messageCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -369,6 +493,8 @@ const styles = StyleSheet.create({
   msgStatusBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5 },
   msgStatusText:  { fontSize: SIZES.xs, ...FONTS.bold, letterSpacing: 0.4 },
   daysLateText:  { fontSize: SIZES.xs, color: '#E74C3C', ...FONTS.semiBold },
+  sentChip:      { backgroundColor: '#EAFAF1', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4 },
+  sentChipText:  { fontSize: SIZES.xs, color: '#27AE60', ...FONTS.bold },
   paidChip:      { fontSize: SIZES.xs, color: '#16A34A', ...FONTS.semiBold },
   pendingChip:   { fontSize: SIZES.xs, color: '#2980B9', ...FONTS.semiBold },
   messageTime:    { fontSize: SIZES.xs, color: COLORS.grayLight, ...FONTS.regular },

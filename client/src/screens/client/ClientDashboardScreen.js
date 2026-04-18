@@ -1,3 +1,4 @@
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -5,34 +6,117 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  ActivityIndicator,
+  RefreshControl,
+  Modal,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, FONTS, SIZES } from '../../constants/theme';
+import { api } from '../../services/api';
 
-// Mock data — replace with real API later
-const ACCOUNT = {
-  clientInitials: 'JD',
-  totalBalance: 12450.0,
-  amountPaid: 4900.0,
-  percentCollected: 62,
-  nextReview: 'Oct 24',
-  status: 'OVERDUE',
+const NOTIF_SEEN_KEY = '@notif_last_seen';
+
+const STATUS_CONFIG = {
+  CURRENT: { bg: '#EAFAF1', text: '#27AE60' },
+  PENDING: { bg: '#EBF5FB', text: '#2980B9' },
+  OVERDUE: { bg: '#FDECEA', text: '#E74C3C' },
+  PAID:    { bg: '#F0FFF4', text: '#16A34A' },
 };
+const STATUS_FALLBACK = { bg: '#F2F2F2', text: '#888' };
 
+function fmt(amount) {
+  if (amount == null) return '$0.00';
+  return '$' + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return '';
+  const diff = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (diff < 60)    return 'just now';
+  if (diff < 3600)  return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
+function initials(name) {
+  if (!name) return '?';
+  return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+}
 
 export default function ClientDashboardScreen({ navigation }) {
-  const remaining = ACCOUNT.totalBalance - ACCOUNT.amountPaid;
+  const [account, setAccount]           = useState(null);
+  const [followups, setFollowups]       = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [refreshing, setRefreshing]     = useState(false);
+  const [notifVisible, setNotifVisible] = useState(false);
+  const [lastSeenTime, setLastSeenTime] = useState(null);
+
+  useEffect(() => {
+    AsyncStorage.getItem(NOTIF_SEEN_KEY).then((val) => {
+      if (val) setLastSeenTime(new Date(val));
+    });
+  }, []);
+
+  const unseenCount = followups.filter((m) => {
+    const t = new Date(m.sent_at || m.created_at);
+    return !lastSeenTime || t > lastSeenTime;
+  }).length;
+
+  const loadData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    try {
+      const { account: acc, followups: msgs } = await api.getClientFollowups();
+      setAccount(acc);
+      setFollowups(msgs || []);
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not load account data.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadData(true);
+  };
+
+  const handleBellPress = () => {
+    setNotifVisible(true);
+  };
+
+  const handleCloseNotif = async () => {
+    setNotifVisible(false);
+    const now = new Date().toISOString();
+    setLastSeenTime(new Date(now));
+    await AsyncStorage.setItem(NOTIF_SEEN_KEY, now);
+    try { await api.markFollowupsSeen(); } catch { /* non-critical */ }
+  };
 
   const handleAvatarPress = () => {
     Alert.alert('Account', 'What would you like to do?', [
       {
         text: 'Logout',
         style: 'destructive',
-        onPress: () => navigation.replace('ClientLogin'),
+        onPress: async () => {
+          await AsyncStorage.removeItem(NOTIF_SEEN_KEY);
+          navigation.replace('ClientLogin');
+        },
       },
       { text: 'Cancel', style: 'cancel' },
     ]);
   };
+
+  const totalBalance = Number(account?.total_balance || 0);
+  const amountPaid   = Number(account?.amount_paid   || 0);
+  const remaining    = totalBalance - amountPaid;
+  const percent      = totalBalance > 0 ? Math.min(100, Math.round((amountPaid / totalBalance) * 100)) : 0;
+  const status       = account?.account_status || 'CURRENT';
+  const statusCfg    = STATUS_CONFIG[status] || STATUS_FALLBACK;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -40,110 +124,186 @@ export default function ClientDashboardScreen({ navigation }) {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Sovereign Ledger</Text>
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.bellBtn}>
+          {/* Bell with badge */}
+          <TouchableOpacity style={styles.bellBtn} onPress={handleBellPress} activeOpacity={0.7}>
             <Text style={styles.bellIcon}>🔔</Text>
+            {unseenCount > 0 && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{unseenCount > 9 ? '9+' : unseenCount}</Text>
+              </View>
+            )}
           </TouchableOpacity>
           <TouchableOpacity style={styles.avatar} onPress={handleAvatarPress} activeOpacity={0.8}>
-            <Text style={styles.avatarText}>{ACCOUNT.clientInitials}</Text>
+            <Text style={styles.avatarText}>{initials(account?.full_name)}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-
-        {/* Balance card */}
-        <View style={styles.balanceCard}>
-          <Text style={styles.balanceLabel}>TOTAL BALANCE DUE</Text>
-          <Text style={styles.balanceAmount}>
-            ${ACCOUNT.totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-          </Text>
-          <View style={styles.statusRow}>
-            <View style={styles.overdueTag}>
-              <Text style={styles.overdueText}>{ACCOUNT.status}</Text>
+      {/* Notification modal */}
+      <Modal
+        visible={notifVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={handleCloseNotif}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>NOTIFICATIONS</Text>
+              <TouchableOpacity onPress={handleCloseNotif} activeOpacity={0.7}>
+                <Text style={styles.modalClose}>✕</Text>
+              </TouchableOpacity>
             </View>
-            <Text style={styles.nextReview}>Next scheduled review: {ACCOUNT.nextReview}</Text>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {followups.length === 0 ? (
+                <Text style={styles.emptyMsg}>No messages from your account manager yet.</Text>
+              ) : (
+                followups.map((msg) => {
+                  const s   = msg.status_at_time || 'CURRENT';
+                  const cfg = STATUS_CONFIG[s] || STATUS_FALLBACK;
+                  return (
+                    <View key={msg.id} style={styles.notifCard}>
+                      <View style={styles.notifCardHeader}>
+                        <View style={[styles.msgStatusBadge, { backgroundColor: cfg.bg }]}>
+                          <Text style={[styles.msgStatusText, { color: cfg.text }]}>{s}</Text>
+                        </View>
+                        <Text style={styles.notifTime}>{timeAgo(msg.sent_at || msg.created_at)}</Text>
+                      </View>
+                      <View style={styles.paymentDueRow}>
+                        <Text style={styles.paymentDueLabel}>AMOUNT DUE</Text>
+                        <Text style={styles.paymentDueValue}>{fmt(totalBalance)}</Text>
+                        {msg.days_late > 0 && (
+                          <View style={styles.daysLateChip}>
+                            <Text style={styles.daysLateText}>{msg.days_late}d overdue</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.notifContent}>{msg.content}</Text>
+                    </View>
+                  );
+                })
+              )}
+              <View style={{ height: 24 }} />
+            </ScrollView>
           </View>
-
-          {/* Progress */}
-          <View style={styles.progressSection}>
-            <View style={styles.progressHeader}>
-              <View>
-                <Text style={styles.progressLabel}>PROGRESS</Text>
-                <Text style={styles.progressValue}>{ACCOUNT.percentCollected}% Collected</Text>
-              </View>
-              <View style={{ alignItems: 'flex-end' }}>
-                <Text style={styles.progressLabel}>REMAINING</Text>
-                <Text style={styles.progressValueAlt}>
-                  ${remaining.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${ACCOUNT.percentCollected}%` }]} />
-            </View>
-          </View>
-
-          {/* Mini stats */}
-          <View style={styles.statsRow}>
-            <View style={styles.statCard}>
-              <Text style={styles.statLabel}>AMOUNT PAID</Text>
-              <Text style={styles.statValue}>
-                ${ACCOUNT.amountPaid.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-              </Text>
-            </View>
-            <View style={[styles.statCard, styles.statCardRight]}>
-              <Text style={styles.statLabel}>OBLIGATION</Text>
-              <Text style={styles.statValue}>
-                ${ACCOUNT.totalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-              </Text>
-            </View>
-          </View>
-
-          {/* CTA */}
-          <TouchableOpacity
-            style={styles.paidButton}
-            onPress={() => navigation.navigate('ClientPaymentProof')}
-            activeOpacity={0.85}
-          >
-            <Text style={styles.paidButtonIcon}>📋</Text>
-            <Text style={styles.paidButtonText}>I've Paid This</Text>
-          </TouchableOpacity>
         </View>
+      </Modal>
 
-        {/* Upcoming follow-up */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>UPCOMING FOLLOW-UP</Text>
-          <View style={styles.eventCard}>
-            <View style={styles.eventLeft}>
-              <View style={styles.eventAvatar}>
-                <Text style={styles.eventAvatarText}>👤</Text>
+      {loading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={COLORS.navy} />
+        </View>
+      ) : (
+        <ScrollView
+          style={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={[COLORS.navy]}
+              tintColor={COLORS.navy}
+            />
+          }
+        >
+          {/* Balance card */}
+          <View style={styles.balanceCard}>
+            <Text style={styles.balanceLabel}>TOTAL BALANCE DUE</Text>
+            <Text style={styles.balanceAmount}>{fmt(totalBalance)}</Text>
+            <View style={styles.statusRow}>
+              <View style={[styles.statusTag, { backgroundColor: statusCfg.bg }]}>
+                <Text style={[styles.statusText, { color: statusCfg.text }]}>{status}</Text>
               </View>
-              <View style={styles.eventInfo}>
-                <Text style={styles.eventTitle}>Call with Senior Adjuster</Text>
-                <Text style={styles.eventDesc}>
-                  Reviewing hardship documentation and payment plan adjustment.
-                </Text>
-                <View style={styles.eventMeta}>
-                  <Text style={styles.eventMetaText}>📅 Oct 28, 2023</Text>
-                  <Text style={styles.eventMetaSep}>  ·  </Text>
-                  <Text style={styles.eventMetaText}>🕙 10:30 AM EST</Text>
+              {account?.next_review ? (
+                <Text style={styles.nextReview}>Next review: {account.next_review}</Text>
+              ) : null}
+            </View>
+
+            <View style={styles.progressSection}>
+              <View style={styles.progressHeader}>
+                <View>
+                  <Text style={styles.progressLabel}>PROGRESS</Text>
+                  <Text style={styles.progressValue}>{percent}% Collected</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={styles.progressLabel}>REMAINING</Text>
+                  <Text style={styles.progressValueAlt}>{fmt(remaining)}</Text>
                 </View>
               </View>
+              <View style={styles.progressTrack}>
+                <View style={[styles.progressFill, { width: `${percent}%` }]} />
+              </View>
             </View>
-            <TouchableOpacity style={styles.calButton}>
-              <Text style={styles.calButtonText}>ADD TO CALENDAR</Text>
+
+            <View style={styles.statsRow}>
+              <View style={styles.statCard}>
+                <Text style={styles.statLabel}>AMOUNT PAID</Text>
+                <Text style={styles.statValue}>{fmt(amountPaid)}</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Text style={styles.statLabel}>OBLIGATION</Text>
+                <Text style={styles.statValue}>{fmt(totalBalance)}</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={styles.paidButton}
+              onPress={() => navigation.navigate('ClientPaymentProof')}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.paidButtonIcon}>📋</Text>
+              <Text style={styles.paidButtonText}>I've Paid This</Text>
             </TouchableOpacity>
           </View>
-        </View>
 
-        <View style={{ height: 24 }} />
-      </ScrollView>
+          {/* Followups section */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>FOLLOWUPS</Text>
+              <Text style={styles.sectionCount}>{followups.length} message{followups.length !== 1 ? 's' : ''}</Text>
+            </View>
+
+            {followups.length === 0 ? (
+              <Text style={styles.emptyMsg}>No follow-up messages yet.</Text>
+            ) : (
+              followups.map((msg) => {
+                const s   = msg.status_at_time || 'CURRENT';
+                const cfg = STATUS_CONFIG[s] || STATUS_FALLBACK;
+                return (
+                  <View key={msg.id} style={styles.followupCard}>
+                    <View style={styles.followupHeader}>
+                      <View style={[styles.msgStatusBadge, { backgroundColor: cfg.bg }]}>
+                        <Text style={[styles.msgStatusText, { color: cfg.text }]}>{s}</Text>
+                      </View>
+                      <Text style={styles.followupTime}>{timeAgo(msg.sent_at || msg.created_at)}</Text>
+                    </View>
+                    <View style={styles.paymentDueRow}>
+                      <Text style={styles.paymentDueLabel}>AMOUNT DUE</Text>
+                      <Text style={styles.paymentDueValue}>{fmt(totalBalance)}</Text>
+                      {msg.days_late > 0 && (
+                        <View style={styles.daysLateChip}>
+                          <Text style={styles.daysLateText}>{msg.days_late}d overdue</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.followupContent}>{msg.content}</Text>
+                  </View>
+                );
+              })
+            )}
+          </View>
+
+          <View style={{ height: 24 }} />
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: COLORS.lightBg },
+  safe:    { flex: 1, backgroundColor: COLORS.lightBg },
+  centered:{ flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   header: {
     flexDirection: 'row',
@@ -157,8 +317,21 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontSize: SIZES.base, color: COLORS.navy, ...FONTS.bold },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  bellBtn: { padding: 4 },
-  bellIcon: { fontSize: 18 },
+  bellBtn:     { padding: 4, position: 'relative' },
+  bellIcon:    { fontSize: 20 },
+  badge: {
+    position: 'absolute',
+    top: -2,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#E74C3C',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: { fontSize: 10, color: COLORS.white, ...FONTS.bold },
   avatar: {
     width: 32,
     height: 32,
@@ -168,6 +341,43 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarText: { fontSize: SIZES.sm, color: COLORS.white, ...FONTS.bold },
+
+  /* Notification modal */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    maxHeight: '80%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: { fontSize: SIZES.sm, color: COLORS.navy, ...FONTS.bold, letterSpacing: 1.2 },
+  modalClose: { fontSize: 18, color: COLORS.gray, paddingHorizontal: 4 },
+
+  notifCard: {
+    backgroundColor: COLORS.lightBg,
+    borderRadius: SIZES.radiusSm,
+    padding: 14,
+    marginBottom: 10,
+  },
+  notifCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  notifTime:    { fontSize: SIZES.xs, color: COLORS.grayLight, ...FONTS.regular },
+  notifContent: { fontSize: SIZES.sm, color: COLORS.navy, lineHeight: 20, ...FONTS.regular },
 
   scroll: { flex: 1 },
 
@@ -182,80 +392,24 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  balanceLabel: {
-    fontSize: SIZES.xs,
-    color: COLORS.gray,
-    letterSpacing: 1.2,
-    ...FONTS.semiBold,
-    marginBottom: 4,
-  },
-  balanceAmount: {
-    fontSize: 34,
-    color: COLORS.navy,
-    ...FONTS.extraBold,
-    marginBottom: 8,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 20,
-  },
-  overdueTag: {
-    backgroundColor: '#FDECEA',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  overdueText: { fontSize: SIZES.xs, color: COLORS.red, ...FONTS.bold, letterSpacing: 0.5 },
-  nextReview: { fontSize: SIZES.sm, color: COLORS.gray },
+  balanceLabel: { fontSize: SIZES.xs, color: COLORS.gray, letterSpacing: 1.2, ...FONTS.semiBold, marginBottom: 4 },
+  balanceAmount: { fontSize: 34, color: '#E74C3C', ...FONTS.extraBold, marginBottom: 8 },
+  statusRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 20 },
+  statusTag:    { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4 },
+  statusText:   { fontSize: SIZES.xs, ...FONTS.bold, letterSpacing: 0.5 },
+  nextReview:   { fontSize: SIZES.sm, color: COLORS.gray },
 
-  progressSection: { marginBottom: 16 },
-  progressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  progressLabel: {
-    fontSize: SIZES.xs,
-    color: COLORS.gray,
-    letterSpacing: 1,
-    ...FONTS.semiBold,
-    marginBottom: 2,
-  },
-  progressValue: { fontSize: SIZES.base, color: COLORS.navy, ...FONTS.bold },
+  progressSection:  { marginBottom: 16 },
+  progressHeader:   { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
+  progressLabel:    { fontSize: SIZES.xs, color: COLORS.gray, letterSpacing: 1, ...FONTS.semiBold, marginBottom: 2 },
+  progressValue:    { fontSize: SIZES.base, color: COLORS.navy, ...FONTS.bold },
   progressValueAlt: { fontSize: SIZES.base, color: COLORS.navy, ...FONTS.bold },
-  progressTrack: {
-    height: 8,
-    backgroundColor: COLORS.lightBg,
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: COLORS.navy,
-    borderRadius: 4,
-  },
+  progressTrack:    { height: 8, backgroundColor: COLORS.lightBg, borderRadius: 4, overflow: 'hidden' },
+  progressFill:     { height: '100%', backgroundColor: COLORS.navy, borderRadius: 4 },
 
-  statsRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: COLORS.lightBg,
-    borderRadius: SIZES.radiusSm,
-    padding: 14,
-  },
-  statCardRight: {},
-  statLabel: {
-    fontSize: SIZES.xs,
-    color: COLORS.gray,
-    letterSpacing: 1,
-    ...FONTS.semiBold,
-    marginBottom: 4,
-  },
+  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
+  statCard: { flex: 1, backgroundColor: COLORS.lightBg, borderRadius: SIZES.radiusSm, padding: 14 },
+  statLabel: { fontSize: SIZES.xs, color: COLORS.gray, letterSpacing: 1, ...FONTS.semiBold, marginBottom: 4 },
   statValue: { fontSize: SIZES.base, color: COLORS.navy, ...FONTS.bold },
 
   paidButton: {
@@ -282,79 +436,35 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  sectionHeaderRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: SIZES.xs,
-    color: COLORS.gray,
-    letterSpacing: 1.2,
-    ...FONTS.semiBold,
-    marginBottom: 16,
-  },
-  viewAll: { fontSize: SIZES.sm, color: COLORS.navy, ...FONTS.semiBold },
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  sectionTitle:     { fontSize: SIZES.xs, color: COLORS.gray, letterSpacing: 1.2, ...FONTS.bold },
+  sectionCount:     { fontSize: SIZES.xs, color: COLORS.navy, ...FONTS.bold },
+  emptyMsg:         { fontSize: SIZES.sm, color: COLORS.gray, textAlign: 'center', paddingVertical: 12 },
 
-  eventCard: {},
-  eventLeft: { flexDirection: 'row', gap: 12, marginBottom: 14 },
-  eventAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.lightBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  eventAvatarText: { fontSize: 18 },
-  eventInfo: { flex: 1 },
-  eventTitle: { fontSize: SIZES.md, color: COLORS.navy, ...FONTS.bold, marginBottom: 4 },
-  eventDesc: { fontSize: SIZES.sm, color: COLORS.gray, lineHeight: 18, marginBottom: 8 },
-  eventMeta: { flexDirection: 'row', alignItems: 'center' },
-  eventMetaText: { fontSize: SIZES.xs, color: COLORS.gray, ...FONTS.medium },
-  eventMetaSep: { color: COLORS.grayLight },
-  calButton: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
+  followupCard: {
     borderRadius: SIZES.radiusSm,
-    paddingVertical: 12,
-    alignItems: 'center',
+    backgroundColor: COLORS.lightBg,
+    padding: 14,
+    marginBottom: 10,
   },
-  calButtonText: {
-    fontSize: SIZES.xs,
-    color: COLORS.navy,
-    letterSpacing: 1,
-    ...FONTS.bold,
-  },
+  followupHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  msgStatusBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5 },
+  msgStatusText:  { fontSize: SIZES.xs, ...FONTS.bold, letterSpacing: 0.4 },
+  followupTime:   { fontSize: SIZES.xs, color: COLORS.grayLight, ...FONTS.regular },
 
-  ledgerItem: { paddingBottom: 16 },
-  ledgerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'absolute',
-    left: 0,
-    top: 0,
-  },
-  ledgerIconText: { fontSize: 14, ...FONTS.bold },
-  ledgerBody: { paddingLeft: 48 },
-  ledgerTitleRow: {
+  paymentDueRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 4,
+    gap: 8,
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border || '#EFEFEF',
   },
-  ledgerTitle: { fontSize: SIZES.md, color: COLORS.navy, ...FONTS.bold, flex: 1 },
-  ledgerTime: { fontSize: SIZES.xs, color: COLORS.grayLight, marginLeft: 8 },
-  ledgerSubtitle: { fontSize: SIZES.sm, color: COLORS.gray, lineHeight: 18 },
-  ledgerDivider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginTop: 14,
-    marginBottom: 2,
-    marginLeft: 48,
-  },
+  paymentDueLabel: { fontSize: SIZES.xs, color: COLORS.gray, ...FONTS.semiBold, letterSpacing: 0.8 },
+  paymentDueValue: { fontSize: SIZES.sm, color: COLORS.navy, ...FONTS.bold },
+  daysLateChip:    { backgroundColor: '#FDECEA', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4 },
+  daysLateText:    { fontSize: SIZES.xs, color: '#E74C3C', ...FONTS.bold },
+
+  followupContent: { fontSize: SIZES.sm, color: COLORS.navy, lineHeight: 20, ...FONTS.regular },
 });

@@ -184,11 +184,88 @@ export async function getMessages(req, res) {
 
   const { data, error } = await supabaseAdmin
     .from('account_messages')
-    .select('id, content, status_at_time, days_late, created_at')
+    .select('id, content, status_at_time, days_late, created_at, is_sent')
     .eq('profile_id', id)
     .order('created_at', { ascending: false });
 
   if (error) return res.status(500).json({ error: error.message });
 
   return res.status(200).json({ messages: data || [] });
+}
+
+// ── DELETE /api/accounts/:id/messages/:messageId ─────────────
+export async function deleteMessage(req, res) {
+  const { messageId } = req.params;
+
+  const { error } = await supabaseAdmin
+    .from('account_messages')
+    .delete()
+    .eq('id', messageId);
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  return res.status(200).json({ success: true });
+}
+
+// ── PATCH /api/accounts/:id/messages/:messageId/send ─────────
+export async function sendMessage(req, res) {
+  const { messageId } = req.params;
+
+  const { data, error } = await supabaseAdmin
+    .from('account_messages')
+    .update({ is_sent: true, sent_at: new Date().toISOString() })
+    .eq('id', messageId)
+    .select()
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data)  return res.status(404).json({ error: 'Message not found.' });
+
+  return res.status(200).json({ message: data });
+}
+
+// ── GET /api/client/followups ─────────────────────────────────
+export async function getClientFollowups(req, res) {
+  const clientId = req.user.id;
+
+  const [profileResult, messagesResult] = await Promise.all([
+    supabaseAdmin
+      .from('profiles')
+      .select('full_name, total_balance, amount_paid, next_review, account_status')
+      .eq('id', clientId)
+      .single(),
+    supabaseAdmin
+      .from('account_messages')
+      .select('id, content, status_at_time, days_late, sent_at, created_at, is_seen')
+      .eq('profile_id', clientId)
+      .eq('is_sent', true)
+      .order('sent_at', { ascending: false }),
+  ]);
+
+  if (profileResult.error)  return res.status(500).json({ error: profileResult.error.message });
+  if (messagesResult.error) return res.status(500).json({ error: messagesResult.error.message });
+
+  const followups    = messagesResult.data || [];
+  const unseen_count = followups.filter((m) => !m.is_seen).length;
+
+  return res.status(200).json({
+    account:   profileResult.data,
+    followups,
+    unseen_count,
+  });
+}
+
+// ── PATCH /api/client/followups/seen ─────────────────────────
+export async function markFollowupsSeen(req, res) {
+  const clientId = req.user.id;
+
+  const { error } = await supabaseAdmin
+    .from('account_messages')
+    .update({ is_seen: true })
+    .eq('profile_id', clientId)
+    .eq('is_sent', true)
+    .eq('is_seen', false);
+
+  if (error) return res.status(500).json({ error: error.message });
+  return res.status(200).json({ success: true });
 }

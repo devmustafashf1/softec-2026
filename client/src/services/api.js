@@ -75,7 +75,7 @@ export const api = {
     await tokenStorage.setToken(data.token);
     await tokenStorage.setRefreshToken(data.refresh_token);
 
-    return data; // { token, refresh_token, expires_at, user }
+    return data;
   },
 
   // Logout — clears stored tokens
@@ -138,6 +138,22 @@ export const api = {
 
   async getAccountMessages(id) {
     return request(`/accounts/${id}/messages`);
+  },
+
+  async deleteMessage(accountId, messageId) {
+    return request(`/accounts/${accountId}/messages/${messageId}`, { method: 'DELETE' });
+  },
+
+  async sendMessage(accountId, messageId) {
+    return request(`/accounts/${accountId}/messages/${messageId}/send`, { method: 'PATCH' });
+  },
+
+  async getClientFollowups() {
+    return request('/client/followups');
+  },
+
+  async markFollowupsSeen() {
+    return request('/client/followups/seen', { method: 'PATCH' });
   },
 
   // Exchange refresh token for a new access token
