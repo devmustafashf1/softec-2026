@@ -7,7 +7,6 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
-  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -48,9 +47,7 @@ export default function AccountDetailScreen({ route, navigation }) {
   const [statusChanging, setStatusChanging]   = useState(false);
   const [generating, setGenerating]           = useState(false);
   const [deletingId, setDeletingId]           = useState(null);
-  const [proofs, setProofs]                   = useState([]);
-  const [proofsLoading, setProofsLoading]     = useState(true);
-  const [updatingProofId, setUpdatingProofId] = useState(null);
+  const [proofs, setProofs] = useState([]);
 
   const status    = account.account_status || account.status || 'CURRENT';
   const statusCfg = STATUS_CONFIG[status] || STATUS_BADGE_FALLBACK;
@@ -67,23 +64,13 @@ export default function AccountDetailScreen({ route, navigation }) {
     }
   }, [account.id]);
 
-  const loadProofs = useCallback(async () => {
-    setProofsLoading(true);
-    try {
-      const { proofs: data } = await api.getPaymentProofs(account.id);
-      setProofs(data || []);
-    } catch {
-      // non-critical — silently fail
-    } finally {
-      setProofsLoading(false);
-    }
-  }, [account.id]);
-
   useFocusEffect(
     useCallback(() => {
       loadMessages();
-      loadProofs();
-    }, [loadMessages, loadProofs])
+      api.getPaymentProofs(account.id)
+        .then(({ proofs: data }) => setProofs(data || []))
+        .catch(() => {});
+    }, [loadMessages, account.id])
   );
 
   const handleChangeStatus = async () => {
@@ -174,29 +161,8 @@ export default function AccountDetailScreen({ route, navigation }) {
     }
   };
 
-  const handleUpdateProofStatus = (proof, newStatus) => {
-    Alert.alert(
-      'Update Proof Status',
-      `Mark this proof as ${newStatus}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: async () => {
-            setUpdatingProofId(proof.id);
-            try {
-              await api.updateProofStatus(account.id, proof.id, newStatus);
-              setProofs((prev) => prev.map((p) => p.id === proof.id ? { ...p, status: newStatus } : p));
-            } catch (err) {
-              Alert.alert('Error', err.message || 'Could not update proof status.');
-            } finally {
-              setUpdatingProofId(null);
-            }
-          },
-        },
-      ]
-    );
-  };
+  const pendingProofs  = proofs.filter((p) => p.status === 'PENDING').length;
+  const verifiedProofs = proofs.filter((p) => p.status === 'VERIFIED').length;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -349,71 +315,31 @@ export default function AccountDetailScreen({ route, navigation }) {
           })
         )}
 
-        {/* ── Payment Proofs ── */}
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>PAYMENT PROOFS</Text>
-          <Text style={styles.sectionCount}>{proofs.length} submitted</Text>
-        </View>
-
-        {proofsLoading ? (
-          <View style={styles.messagesLoading}>
-            <ActivityIndicator color={COLORS.navy} />
-          </View>
-        ) : proofs.length === 0 ? (
-          <View style={styles.card}>
-            <Text style={styles.emptyMsg}>No payment proofs submitted yet.</Text>
-          </View>
-        ) : (
-          proofs.map((proof) => {
-            const PROOF_STATUS = {
-              PENDING:  { bg: '#EBF5FB', text: '#2980B9' },
-              VERIFIED: { bg: '#EAFAF1', text: '#27AE60' },
-              REJECTED: { bg: '#FDECEA', text: '#E74C3C' },
-            };
-            const cfg        = PROOF_STATUS[proof.status] || PROOF_STATUS.PENDING;
-            const isUpdating = updatingProofId === proof.id;
-
-            return (
-              <View key={proof.id} style={styles.proofCard}>
-                <Image source={{ uri: proof.image_url }} style={styles.proofImage} resizeMode="cover" />
-                <View style={styles.proofBody}>
-                  <View style={styles.proofHeaderRow}>
-                    <View style={[styles.proofStatusBadge, { backgroundColor: cfg.bg }]}>
-                      <Text style={[styles.proofStatusText, { color: cfg.text }]}>{proof.status}</Text>
-                    </View>
-                    <Text style={styles.messageTime}>{timeAgo(proof.created_at)}</Text>
-                  </View>
-                  <Text style={styles.proofRef}>Ref: {proof.reference_number}</Text>
-                  {proof.note ? <Text style={styles.proofNote}>{proof.note}</Text> : null}
-
-                  {isUpdating ? (
-                    <ActivityIndicator color={COLORS.navy} style={{ marginTop: 10 }} />
-                  ) : (
-                    <View style={styles.proofActions}>
-                      {proof.status !== 'VERIFIED' && (
-                        <TouchableOpacity
-                          style={styles.verifyBtn}
-                          onPress={() => handleUpdateProofStatus(proof, 'VERIFIED')}
-                          activeOpacity={0.8}
-                        >
-                          <Text style={styles.verifyBtnText}>Verify</Text>
-                        </TouchableOpacity>
-                      )}
-                      {proof.status !== 'REJECTED' && (
-                        <TouchableOpacity
-                          style={styles.rejectBtn}
-                          onPress={() => handleUpdateProofStatus(proof, 'REJECTED')}
-                          activeOpacity={0.8}
-                        >
-                          <Text style={styles.rejectBtnText}>Reject</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  )}
+        {/* ── Payment Proofs Summary ── */}
+        {proofs.length > 0 && (
+          <View style={styles.proofSummaryCard}>
+            <Text style={styles.proofSummaryTitle}>PAYMENT PROOFS</Text>
+            <View style={styles.proofSummaryRow}>
+              {pendingProofs > 0 && (
+                <View style={styles.proofSummaryChip}>
+                  <View style={styles.proofSummaryDot} />
+                  <Text style={styles.proofSummaryText}>
+                    {pendingProofs} in review
+                  </Text>
                 </View>
-              </View>
-            );
-          })
+              )}
+              {verifiedProofs > 0 && (
+                <View style={[styles.proofSummaryChip, styles.proofSummaryChipGreen]}>
+                  <Text style={styles.proofSummaryTextGreen}>
+                    ✔ {verifiedProofs} verified
+                  </Text>
+                </View>
+              )}
+              <Text style={styles.proofSummaryHint}>
+                See Payments tab for details
+              </Text>
+            </View>
+          </View>
         )}
 
         <View style={{ height: 32 }} />
@@ -614,47 +540,34 @@ const styles = StyleSheet.create({
   },
 
   /* Payment Proofs */
-  proofCard: {
-    backgroundColor: COLORS.white,
-    borderRadius: SIZES.radius,
+  proofSummaryCard: {
     marginHorizontal: 16,
     marginBottom: 10,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
+    backgroundColor: COLORS.white,
+    borderRadius: SIZES.radius,
+    padding: 14,
+    elevation: 1,
   },
-  proofImage: { width: '100%', height: 180 },
-  proofBody:  { padding: 14 },
-  proofHeaderRow: {
+  proofSummaryTitle: {
+    fontSize: SIZES.xs,
+    color: COLORS.gray,
+    ...FONTS.bold,
+    letterSpacing: 1.2,
+    marginBottom: 10,
+  },
+  proofSummaryRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8 },
+  proofSummaryChip: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    backgroundColor: '#EBF5FB',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    gap: 6,
   },
-  proofStatusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5 },
-  proofStatusText:  { fontSize: SIZES.xs, ...FONTS.bold, letterSpacing: 0.4 },
-  proofRef:   { fontSize: SIZES.sm, color: COLORS.navy, ...FONTS.semiBold, marginBottom: 4 },
-  proofNote:  { fontSize: SIZES.sm, color: COLORS.gray, lineHeight: 18, marginBottom: 8 },
-  proofActions: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  verifyBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: '#EAFAF1',
-    borderWidth: 1,
-    borderColor: '#A9DFBF',
-  },
-  verifyBtnText: { color: '#27AE60', fontSize: SIZES.xs, ...FONTS.bold, letterSpacing: 0.4 },
-  rejectBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-    borderRadius: 8,
-    backgroundColor: '#FDECEA',
-    borderWidth: 1,
-    borderColor: '#F5C6C0',
-  },
-  rejectBtnText: { color: '#E74C3C', fontSize: SIZES.xs, ...FONTS.bold, letterSpacing: 0.4 },
+  proofSummaryChipGreen: { backgroundColor: '#EAFAF1' },
+  proofSummaryDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#2980B9' },
+  proofSummaryText: { fontSize: SIZES.xs, color: '#2980B9', ...FONTS.bold },
+  proofSummaryTextGreen: { fontSize: SIZES.xs, color: '#27AE60', ...FONTS.bold },
+  proofSummaryHint: { fontSize: SIZES.xs, color: COLORS.grayLight, ...FONTS.regular },
 });
