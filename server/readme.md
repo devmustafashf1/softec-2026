@@ -1,1 +1,1 @@
-Backend in node 
+Backend in node npx create-expo-app@latest . --template blank
