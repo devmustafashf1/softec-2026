@@ -1,8 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_BASE_URL } from '../constants/env';
 
-// Android emulator → use 10.0.2.2
-// Physical device / Expo Go → use your machine's LAN IP
-const BASE_URL = 'http://192.168.0.181:5000/api';
+const BASE_URL = API_BASE_URL;
 
 // ── Token helpers ────────────────────────────────────────────
 const TOKEN_KEY         = '@auth_token';
@@ -110,10 +109,10 @@ export const api = {
     return request('/users');
   },
 
-  async createUser({ fullName, username, password, companyName, totalBalance, amountPaid, nextReview, accountStatus }) {
+  async createUser({ fullName, username, password, email, companyName, totalBalance, amountPaid, nextReview, accountStatus }) {
     return request('/users', {
       method: 'POST',
-      body: JSON.stringify({ fullName, username, password, companyName, totalBalance, amountPaid, nextReview, accountStatus }),
+      body: JSON.stringify({ fullName, username, password, email, companyName, totalBalance, amountPaid, nextReview, accountStatus }),
     });
   },
 
@@ -144,8 +143,11 @@ export const api = {
     return request(`/accounts/${accountId}/messages/${messageId}`, { method: 'DELETE' });
   },
 
-  async sendMessage(accountId, messageId) {
-    return request(`/accounts/${accountId}/messages/${messageId}/send`, { method: 'PATCH' });
+  async sendMessage(accountId, messageId, { sendEmail = false } = {}) {
+    return request(`/accounts/${accountId}/messages/${messageId}/send`, {
+      method: 'PATCH',
+      body: JSON.stringify({ sendEmail }),
+    });
   },
 
   async getClientFollowups() {

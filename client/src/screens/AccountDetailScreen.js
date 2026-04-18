@@ -7,6 +7,8 @@ import {
   StyleSheet,
   ActivityIndicator,
   Alert,
+  Modal,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -47,7 +49,10 @@ export default function AccountDetailScreen({ route, navigation }) {
   const [statusChanging, setStatusChanging]   = useState(false);
   const [generating, setGenerating]           = useState(false);
   const [deletingId, setDeletingId]           = useState(null);
-  const [proofs, setProofs] = useState([]);
+  const [proofs, setProofs]                   = useState([]);
+  const [sendModal, setSendModal]             = useState(null);
+  const [emailEnabled, setEmailEnabled]       = useState(false);
+  const [sending, setSending]                 = useState(false);
 
   const status    = account.account_status || account.status || 'CURRENT';
   const statusCfg = STATUS_CONFIG[status] || STATUS_BADGE_FALLBACK;
@@ -126,27 +131,28 @@ export default function AccountDetailScreen({ route, navigation }) {
   };
 
   const handleSendMessage = (msg) => {
-    Alert.alert(
-      'Send Follow-up',
-      'Send this message to the client portal?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Send',
-          onPress: async () => {
-            try {
-              await api.sendMessage(account.id, msg.id);
-              setMessages((prev) =>
-                prev.map((m) => m.id === msg.id ? { ...m, is_sent: true } : m)
-              );
-              Alert.alert('Sent', 'Message delivered to the client portal.');
-            } catch (err) {
-              Alert.alert('Error', err.message || 'Could not send message.');
-            }
-          },
-        },
-      ]
-    );
+    setEmailEnabled(!!account.email);
+    setSendModal(msg);
+  };
+
+  const confirmSend = async () => {
+    if (!sendModal) return;
+    setSending(true);
+    try {
+      const { emailWarning } = await api.sendMessage(account.id, sendModal.id, { sendEmail: emailEnabled });
+      setMessages((prev) =>
+        prev.map((m) => m.id === sendModal.id ? { ...m, is_sent: true } : m)
+      );
+      setSendModal(null);
+      const successMsg = emailEnabled && account.email
+        ? 'Message sent to client portal and email.'
+        : 'Message delivered to the client portal.';
+      Alert.alert('Sent', emailWarning || successMsg);
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not send message.');
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleGenerateMessage = async () => {
@@ -344,6 +350,79 @@ export default function AccountDetailScreen({ route, navigation }) {
 
         <View style={{ height: 32 }} />
       </ScrollView>
+
+      {/* ── Send Modal ── */}
+      <Modal
+        visible={!!sendModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { if (!sending) setSendModal(null); }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.sendModal}>
+            <Text style={styles.sendModalTitle}>Send Follow-up</Text>
+
+            {/* Message preview */}
+            <View style={styles.sendPreview}>
+              <Text style={styles.sendPreviewText} numberOfLines={4}>
+                {sendModal?.content}
+              </Text>
+            </View>
+
+            {/* Channel toggles */}
+            <View style={styles.channelRow}>
+              <View style={styles.channelInfo}>
+                <Text style={styles.channelLabel}>In-App Notification</Text>
+                <Text style={styles.channelSub}>Always delivered to client portal</Text>
+              </View>
+              <Switch
+                value={true}
+                disabled
+                trackColor={{ true: COLORS.navy }}
+                thumbColor={COLORS.white}
+              />
+            </View>
+
+            <View style={styles.channelRow}>
+              <View style={styles.channelInfo}>
+                <Text style={styles.channelLabel}>Email</Text>
+                <Text style={styles.channelSub}>
+                  {account.email ? account.email : 'No email on record'}
+                </Text>
+              </View>
+              <Switch
+                value={emailEnabled}
+                onValueChange={setEmailEnabled}
+                disabled={!account.email}
+                trackColor={{ false: COLORS.border, true: COLORS.navy }}
+                thumbColor={COLORS.white}
+              />
+            </View>
+
+            {/* Actions */}
+            <View style={styles.sendModalActions}>
+              <TouchableOpacity
+                style={styles.cancelModalBtn}
+                onPress={() => setSendModal(null)}
+                disabled={sending}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.cancelModalText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmSendBtn, sending && styles.actionDisabled]}
+                onPress={confirmSend}
+                disabled={sending}
+                activeOpacity={0.85}
+              >
+                {sending
+                  ? <ActivityIndicator color={COLORS.white} />
+                  : <Text style={styles.confirmSendText}>Send</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -570,4 +649,72 @@ const styles = StyleSheet.create({
   proofSummaryText: { fontSize: SIZES.xs, color: '#2980B9', ...FONTS.bold },
   proofSummaryTextGreen: { fontSize: SIZES.xs, color: '#27AE60', ...FONTS.bold },
   proofSummaryHint: { fontSize: SIZES.xs, color: COLORS.grayLight, ...FONTS.regular },
+
+  /* Send Modal */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  sendModal: {
+    backgroundColor: COLORS.white,
+    borderRadius: SIZES.radiusLg,
+    padding: 20,
+    width: '100%',
+  },
+  sendModalTitle: {
+    fontSize: SIZES.lg,
+    color: COLORS.navy,
+    ...FONTS.extraBold,
+    marginBottom: 14,
+  },
+  sendPreview: {
+    backgroundColor: COLORS.lightBg,
+    borderRadius: SIZES.radiusSm,
+    padding: 12,
+    marginBottom: 16,
+  },
+  sendPreviewText: {
+    fontSize: SIZES.sm,
+    color: COLORS.navy,
+    lineHeight: 20,
+    ...FONTS.regular,
+  },
+  channelRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  channelInfo: { flex: 1, marginRight: 12 },
+  channelLabel: { fontSize: SIZES.md, color: COLORS.navy, ...FONTS.semiBold },
+  channelSub: { fontSize: SIZES.xs, color: COLORS.gray, marginTop: 2 },
+  sendModalActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  cancelModalBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: SIZES.radiusSm,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cancelModalText: { fontSize: SIZES.md, color: COLORS.gray, ...FONTS.semiBold },
+  confirmSendBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: SIZES.radiusSm,
+    backgroundColor: COLORS.navy,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmSendText: { fontSize: SIZES.md, color: COLORS.white, ...FONTS.bold },
 });

@@ -209,7 +209,8 @@ export async function deleteMessage(req, res) {
 
 // ── PATCH /api/accounts/:id/messages/:messageId/send ─────────
 export async function sendMessage(req, res) {
-  const { messageId } = req.params;
+  const { id, messageId } = req.params;
+  const { sendEmail = false } = req.body;
 
   const { data, error } = await supabaseAdmin
     .from('account_messages')
@@ -220,6 +221,40 @@ export async function sendMessage(req, res) {
 
   if (error) return res.status(500).json({ error: error.message });
   if (!data)  return res.status(404).json({ error: 'Message not found.' });
+
+  if (sendEmail) {
+    const { data: profile, error: profileErr } = await supabaseAdmin
+      .from('profiles')
+      .select('email, full_name')
+      .eq('id', id)
+      .single();
+
+    console.log('[sendMessage] profile fetch:', { id, profile, profileErr });
+
+    if (!profile?.email) {
+      console.log('[sendMessage] No email on profile — skipping email send');
+      return res.status(200).json({ message: data, emailWarning: 'No email address on this account — only sent in-app.' });
+    }
+
+    try {
+      const nodemailer = await import('nodemailer');
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: { user: config.emailUser, pass: config.emailPass },
+      });
+      const emailResult = await transporter.sendMail({
+        from:    `"Account Manager" <${config.emailUser}>`,
+        to:      profile.email,
+        subject: 'A message from your account manager',
+        html:    `<p style="font-family:sans-serif;line-height:1.6;">${data.content.replace(/\n/g, '<br/>')}</p>`,
+        text:    data.content,
+      });
+      console.log('[sendMessage] Nodemailer result:', emailResult.messageId);
+    } catch (emailErr) {
+      console.error('[sendMessage] Nodemailer error:', emailErr.message);
+      return res.status(200).json({ message: data, emailWarning: `Email failed: ${emailErr.message}` });
+    }
+  }
 
   return res.status(200).json({ message: data });
 }

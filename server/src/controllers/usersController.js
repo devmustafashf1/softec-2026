@@ -5,7 +5,7 @@ import { supabaseAdmin } from '../config/supabase.js';
 export async function listUsers(req, res) {
   const { data, error } = await supabaseAdmin
     .from('profiles')
-    .select('id, full_name, username, company_name, total_balance, amount_paid, next_review, account_status, is_active, created_at')
+    .select('id, full_name, username, email, company_name, total_balance, amount_paid, next_review, account_status, is_active, created_at')
     .eq('role', 'client')
     .order('created_at', { ascending: false });
 
@@ -19,7 +19,7 @@ export async function listUsers(req, res) {
 // ── POST /api/users ───────────────────────────────────────────
 // Admin creates a client user. Clients log in via username, not email.
 export async function createUser(req, res) {
-  const { fullName, username, password, companyName, totalBalance, amountPaid, nextReview, accountStatus } = req.body;
+  const { fullName, username, password, email, companyName, totalBalance, amountPaid, nextReview, accountStatus } = req.body;
 
   if (!fullName || !username || !password) {
     return res.status(400).json({ error: 'fullName, username, and password are required' });
@@ -69,6 +69,7 @@ export async function createUser(req, res) {
       id:             authData.user.id,
       full_name:      fullName,
       username:       username.toLowerCase(),
+      email:          email ?? null,
       company_name:   companyName ?? null,
       role:           'client',
       is_active:      true,

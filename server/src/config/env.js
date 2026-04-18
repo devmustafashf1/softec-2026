@@ -9,4 +9,6 @@ export const config = {
   supabasePublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY,
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   deepseekApiKey: process.env.DEEPSEEK_API_KEY,
+  emailUser: process.env.EMAIL_USER,
+  emailPass: process.env.EMAIL_PASS,
 };

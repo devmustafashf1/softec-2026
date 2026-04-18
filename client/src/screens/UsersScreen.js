@@ -33,6 +33,9 @@ function UserCard({ user, onToggle }) {
           <View style={styles.cardInfo}>
             <Text style={styles.userName}>{user.full_name}</Text>
             <Text style={styles.userMeta}>@{user.username}</Text>
+            {user.email ? (
+              <Text style={styles.userEmail}>{user.email}</Text>
+            ) : null}
             {user.company_name ? (
               <Text style={styles.userMeta}>{user.company_name}</Text>
             ) : null}
@@ -77,6 +80,7 @@ export default function UsersScreen({ navigation }) {
   // Form state
   const [fullName, setFullName] = useState('');
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [paymentAmount, setPaymentAmount] = useState('');
   const [intervalPreset, setIntervalPreset] = useState('');
@@ -129,7 +133,7 @@ export default function UsersScreen({ navigation }) {
   };
 
   const resetForm = () => {
-    setFullName(''); setUsername(''); setPassword('');
+    setFullName(''); setUsername(''); setEmail(''); setPassword('');
     setPaymentAmount(''); setIntervalPreset(''); setCustomNumber(''); setCustomUnit('weeks'); setShowPassword(false);
   };
 
@@ -143,6 +147,7 @@ export default function UsersScreen({ navigation }) {
       await api.createUser({
         fullName:      fullName.trim(),
         username:      username.trim(),
+        email:         email.trim() || undefined,
         password,
         companyName:   adminCompany || undefined,
         totalBalance:  paymentAmount ? parseFloat(paymentAmount) : 0,
@@ -220,6 +225,9 @@ export default function UsersScreen({ navigation }) {
 
               <Text style={styles.fieldLabel}>USERNAME *</Text>
               <TextInput style={styles.input} placeholder="janedoe" placeholderTextColor={COLORS.grayLight} value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} />
+
+              <Text style={styles.fieldLabel}>EMAIL</Text>
+              <TextInput style={styles.input} placeholder="jane@example.com" placeholderTextColor={COLORS.grayLight} value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
 
               <Text style={styles.fieldLabel}>PASSWORD *</Text>
               <View style={styles.inputRow}>
@@ -367,6 +375,7 @@ const styles = StyleSheet.create({
   cardInfo: { flex: 1 },
   userName: { fontSize: SIZES.base, color: COLORS.navy, ...FONTS.bold, marginBottom: 2 },
   userMeta: { fontSize: SIZES.sm, color: COLORS.gray },
+  userEmail: { fontSize: SIZES.sm, color: COLORS.navy, opacity: 0.6, ...FONTS.medium },
   cardRight: { marginLeft: 8 },
 
   cardStats: { flexDirection: 'row', gap: 8, marginBottom: 10 },
