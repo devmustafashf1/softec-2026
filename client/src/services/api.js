@@ -1,35 +1,112 @@
-const BASE_URL = 'http://localhost:5000/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
+// Android emulator → use 10.0.2.2
+// Physical device / Expo Go → use your machine's LAN IP
+const BASE_URL = 'http://192.168.0.181:5000/api';
+
+// ── Token helpers ────────────────────────────────────────────
+const TOKEN_KEY         = '@auth_token';
+const REFRESH_TOKEN_KEY = '@refresh_token';
+
+export const tokenStorage = {
+  async getToken()              { return AsyncStorage.getItem(TOKEN_KEY); },
+  async setToken(token)         { return AsyncStorage.setItem(TOKEN_KEY, token); },
+  async getRefreshToken()       { return AsyncStorage.getItem(REFRESH_TOKEN_KEY); },
+  async setRefreshToken(token)  { return AsyncStorage.setItem(REFRESH_TOKEN_KEY, token); },
+  async clear()                 {
+    await AsyncStorage.removeItem(TOKEN_KEY);
+    await AsyncStorage.removeItem(REFRESH_TOKEN_KEY);
+  },
+};
+
+// ── Base fetch wrapper ────────────────────────────────────────
+async function request(path, options = {}) {
+  const token = await tokenStorage.getToken();
+
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...options.headers,
+  };
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers,
+  });
+
+  const data = await res.json();
+
+  if (!res.ok) {
+    throw new Error(data.error || `Request failed with status ${res.status}`);
+  }
+
+  return data;
+}
+
+// ── Auth API ─────────────────────────────────────────────────
 export const api = {
+  // Health check
   async health() {
-    const res = await fetch(`${BASE_URL}/health`);
-    return res.json();
+    return request('/health');
   },
 
-  async login({ email, password }) {
-    // TODO: wire to real auth endpoint
-    // For now, mock a successful login
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        if (email && password) {
-          resolve({ success: true, token: 'mock-token-123', user: { email } });
-        } else {
-          reject(new Error('Invalid credentials'));
-        }
-      }, 1000);
-    });
-  },
-
+  // Register a new admin/agent account
   async register({ companyName, industry, contactPerson, email, password }) {
-    // TODO: wire to real register endpoint
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        if (email && password) {
-          resolve({ success: true, message: 'Account created' });
-        } else {
-          reject(new Error('Registration failed'));
-        }
-      }, 1000);
+    return request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        email,
+        password,
+        fullName:    contactPerson,
+        companyName: companyName,
+        industry:    industry,
+      }),
     });
+  },
+
+  // Login — stores token automatically
+  async login({ email, password }) {
+    const data = await request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+
+    // Persist tokens for subsequent requests
+    await tokenStorage.setToken(data.token);
+    await tokenStorage.setRefreshToken(data.refresh_token);
+
+    return data; // { token, refresh_token, expires_at, user }
+  },
+
+  // Logout — clears stored tokens
+  async logout() {
+    try {
+      await request('/auth/logout', { method: 'POST' });
+    } catch {
+      // Even if the server call fails, clear local tokens
+    } finally {
+      await tokenStorage.clear();
+    }
+  },
+
+  // Get the currently authenticated user
+  async me() {
+    return request('/auth/me');
+  },
+
+  // Exchange refresh token for a new access token
+  async refreshToken() {
+    const refresh_token = await tokenStorage.getRefreshToken();
+    if (!refresh_token) throw new Error('No refresh token available');
+
+    const data = await request('/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refresh_token }),
+    });
+
+    await tokenStorage.setToken(data.token);
+    await tokenStorage.setRefreshToken(data.refresh_token);
+
+    return data;
   },
 };

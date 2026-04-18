@@ -70,7 +70,7 @@ export default function LoginScreen({ navigation }) {
 
           {/* Password field */}
           <View style={styles.labelRow}>
-            <Text style={styles.label}>ACCESS TOKEN</Text>
+            <Text style={styles.label}>PASSWORD</Text>
             <TouchableOpacity>
               <Text style={styles.forgotText}>FORGOT?</Text>
             </TouchableOpacity>
