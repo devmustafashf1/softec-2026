@@ -45,13 +45,15 @@ function initials(name) {
   return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
-export default function ClientDashboardScreen({ navigation }) {
+export default function ClientDashboardScreen({ route, navigation }) {
+  const routeUser = route?.params?.user;
   const [account, setAccount]           = useState(null);
   const [followups, setFollowups]       = useState([]);
   const [loading, setLoading]           = useState(true);
   const [refreshing, setRefreshing]     = useState(false);
   const [notifVisible, setNotifVisible] = useState(false);
   const [lastSeenTime, setLastSeenTime] = useState(null);
+  const [latestProof, setLatestProof]   = useState(null);
 
   useEffect(() => {
     AsyncStorage.getItem(NOTIF_SEEN_KEY).then((val) => {
@@ -70,6 +72,17 @@ export default function ClientDashboardScreen({ navigation }) {
       const { account: acc, followups: msgs } = await api.getClientFollowups();
       setAccount(acc);
       setFollowups(msgs || []);
+
+      if (acc?.id) {
+        try {
+          const { proofs } = await api.getPaymentProofs(acc.id);
+          const pending  = proofs?.find((p) => p.status === 'PENDING');
+          const verified = proofs?.find((p) => p.status === 'VERIFIED');
+          setLatestProof(pending || verified || proofs?.[0] || null);
+        } catch {
+          // non-critical
+        }
+      }
     } catch (err) {
       Alert.alert('Error', err.message || 'Could not load account data.');
     } finally {
@@ -247,14 +260,32 @@ export default function ClientDashboardScreen({ navigation }) {
               </View>
             </View>
 
-            <TouchableOpacity
-              style={styles.paidButton}
-              onPress={() => navigation.navigate('ClientPaymentProof')}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.paidButtonIcon}>📋</Text>
-              <Text style={styles.paidButtonText}>I've Paid This</Text>
-            </TouchableOpacity>
+            {latestProof?.status === 'VERIFIED' ? (
+              <View style={styles.proofBannerVerified}>
+                <Text style={styles.proofBannerIcon}>✔</Text>
+                <View>
+                  <Text style={styles.proofBannerTitle}>Payment Verified</Text>
+                  <Text style={styles.proofBannerSub}>Your payment has been confirmed by admin.</Text>
+                </View>
+              </View>
+            ) : latestProof?.status === 'PENDING' ? (
+              <View style={styles.proofBannerPending}>
+                <Text style={styles.proofBannerIcon}>⏳</Text>
+                <View>
+                  <Text style={styles.proofBannerTitlePending}>Under Review</Text>
+                  <Text style={styles.proofBannerSub}>Your payment proof is awaiting admin verification.</Text>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={styles.paidButton}
+                onPress={() => navigation.navigate('ClientPaymentProof', { profileId: routeUser?.id || account?.id })}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.paidButtonIcon}>📋</Text>
+                <Text style={styles.paidButtonText}>I've Paid This</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Followups section */}
@@ -423,6 +454,31 @@ const styles = StyleSheet.create({
   },
   paidButtonIcon: { fontSize: 16 },
   paidButtonText: { color: COLORS.white, fontSize: SIZES.md, ...FONTS.bold },
+
+  proofBannerVerified: {
+    backgroundColor: '#EAFAF1',
+    borderRadius: SIZES.radiusSm,
+    borderWidth: 1,
+    borderColor: '#A9DFBF',
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  proofBannerPending: {
+    backgroundColor: '#EBF5FB',
+    borderRadius: SIZES.radiusSm,
+    borderWidth: 1,
+    borderColor: '#AED6F1',
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  proofBannerIcon: { fontSize: 20 },
+  proofBannerTitle: { fontSize: SIZES.sm, color: '#27AE60', ...FONTS.bold, marginBottom: 2 },
+  proofBannerTitlePending: { fontSize: SIZES.sm, color: '#2980B9', ...FONTS.bold, marginBottom: 2 },
+  proofBannerSub: { fontSize: SIZES.xs, color: COLORS.gray, lineHeight: 16 },
 
   section: {
     marginHorizontal: 16,

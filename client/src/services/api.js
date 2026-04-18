@@ -156,6 +156,39 @@ export const api = {
     return request('/client/followups/seen', { method: 'PATCH' });
   },
 
+  // ── Payment proofs ────────────────────────────────────────
+  async submitPaymentProof({ imageUri, mimeType, referenceNumber, note }) {
+    const token = await tokenStorage.getToken();
+    const formData = new FormData();
+    formData.append('receipt', { uri: imageUri, type: mimeType || 'image/jpeg', name: 'receipt.jpg' });
+    formData.append('referenceNumber', referenceNumber);
+    if (note) formData.append('note', note);
+
+    const res = await fetch(`${BASE_URL}/client/payment-proof`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || data.message || `Upload failed (${res.status})`);
+    return data;
+  },
+
+  async getAllPaymentProofs() {
+    return request('/accounts/payment-proofs');
+  },
+
+  async getPaymentProofs(id) {
+    return request(`/accounts/${id}/payment-proofs`);
+  },
+
+  async updateProofStatus(id, proofId, status) {
+    return request(`/accounts/${id}/payment-proofs/${proofId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+  },
+
   // Exchange refresh token for a new access token
   async refreshToken() {
     const refresh_token = await tokenStorage.getRefreshToken();

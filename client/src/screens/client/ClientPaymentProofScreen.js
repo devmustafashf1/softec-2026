@@ -8,26 +8,42 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as ImagePicker from 'expo-image-picker';
 import { COLORS, FONTS, SIZES } from '../../constants/theme';
+import { api } from '../../services/api';
 
-export default function ClientPaymentProofScreen({ navigation }) {
+export default function ClientPaymentProofScreen({ route, navigation }) {
+  const profileId = route.params?.profileId;
+
+  const [selectedImage, setSelectedImage]   = useState(null); // { uri, mimeType }
   const [referenceNumber, setReferenceNumber] = useState('');
-  const [note, setNote] = useState('');
-  const [imageSelected, setImageSelected] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [note, setNote]                     = useState('');
+  const [submitting, setSubmitting]         = useState(false);
 
-  const handlePickImage = () => {
-    // TODO: wire to expo-image-picker
-    Alert.alert('Upload Receipt', 'Image picker will be connected to the backend.', [
-      { text: 'Simulate Upload', onPress: () => setImageSelected(true) },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+  const handlePickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Needed', 'Allow access to your photo library to upload a receipt.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+      allowsEditing: false,
+    });
+
+    if (!result.canceled && result.assets?.length > 0) {
+      const asset = result.assets[0];
+      setSelectedImage({ uri: asset.uri, mimeType: asset.mimeType || 'image/jpeg' });
+    }
   };
 
-  const handleSubmit = () => {
-    if (!imageSelected) {
+  const handleSubmit = async () => {
+    if (!selectedImage) {
       Alert.alert('Receipt Required', 'Please upload your payment receipt before submitting.');
       return;
     }
@@ -35,16 +51,25 @@ export default function ClientPaymentProofScreen({ navigation }) {
       Alert.alert('Reference Required', 'Please enter your payment reference number.');
       return;
     }
+
     setSubmitting(true);
-    // TODO: wire to backend
-    setTimeout(() => {
-      setSubmitting(false);
+    try {
+      await api.submitPaymentProof({
+        imageUri:        selectedImage.uri,
+        mimeType:        selectedImage.mimeType,
+        referenceNumber: referenceNumber.trim(),
+        note:            note.trim() || undefined,
+      });
       Alert.alert(
         'Submitted',
         'Your payment proof has been submitted for verification. You will be notified once reviewed.',
         [{ text: 'OK', onPress: () => navigation.goBack() }],
       );
-    }, 1000);
+    } catch (err) {
+      Alert.alert('Upload Failed', err.message || 'Could not submit proof. Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -67,17 +92,14 @@ export default function ClientPaymentProofScreen({ navigation }) {
           {/* Receipt upload */}
           <Text style={styles.fieldLabel}>RECEIPT IMAGE</Text>
           <TouchableOpacity
-            style={[styles.uploadArea, imageSelected && styles.uploadAreaSelected]}
+            style={[styles.uploadArea, selectedImage && styles.uploadAreaSelected]}
             onPress={handlePickImage}
             activeOpacity={0.8}
           >
-            {imageSelected ? (
+            {selectedImage ? (
               <>
-                <View style={styles.uploadIconCircleSelected}>
-                  <Text style={styles.checkIcon}>✓</Text>
-                </View>
-                <Text style={styles.uploadTextSelected}>Receipt Uploaded</Text>
-                <Text style={styles.uploadHint}>Tap to change</Text>
+                <Image source={{ uri: selectedImage.uri }} style={styles.previewImage} resizeMode="cover" />
+                <Text style={styles.uploadHint} numberOfLines={1}>Tap to change</Text>
               </>
             ) : (
               <>
@@ -85,7 +107,7 @@ export default function ClientPaymentProofScreen({ navigation }) {
                   <Text style={styles.uploadArrow}>⬆</Text>
                 </View>
                 <Text style={styles.uploadText}>Upload Receipt</Text>
-                <Text style={styles.uploadHint}>PNG, JPG or PDF up to 10MB</Text>
+                <Text style={styles.uploadHint}>PNG or JPG up to 10MB</Text>
               </>
             )}
           </TouchableOpacity>
@@ -196,12 +218,20 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.lightBg,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 40,
+    paddingVertical: 20,
     marginBottom: 24,
+    minHeight: 160,
+    overflow: 'hidden',
   },
   uploadAreaSelected: {
-    borderColor: COLORS.green,
-    backgroundColor: COLORS.greenLight,
+    borderColor: COLORS.navy,
+    borderStyle: 'solid',
+    paddingVertical: 0,
+  },
+  previewImage: {
+    width: '100%',
+    height: 180,
+    borderRadius: SIZES.radius - 2,
   },
   uploadIconCircle: {
     width: 56,
@@ -212,20 +242,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 12,
   },
-  uploadIconCircleSelected: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.green,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
   uploadArrow: { fontSize: 22, color: COLORS.white },
-  checkIcon: { fontSize: 22, color: COLORS.white, ...FONTS.bold },
   uploadText: { fontSize: SIZES.md, color: COLORS.navy, ...FONTS.bold, marginBottom: 4 },
-  uploadTextSelected: { fontSize: SIZES.md, color: COLORS.green, ...FONTS.bold, marginBottom: 4 },
-  uploadHint: { fontSize: SIZES.sm, color: COLORS.gray },
+  uploadHint: { fontSize: SIZES.sm, color: COLORS.gray, marginTop: 6 },
 
   input: {
     backgroundColor: COLORS.lightBg,
