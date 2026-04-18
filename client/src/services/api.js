@@ -124,6 +124,22 @@ export const api = {
     });
   },
 
+  // ── Account management ────────────────────────────────────
+  async changeAccountStatus(id, account_status) {
+    return request(`/accounts/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ account_status }),
+    });
+  },
+
+  async generateMessage(id) {
+    return request(`/accounts/${id}/generate-message`, { method: 'POST' });
+  },
+
+  async getAccountMessages(id) {
+    return request(`/accounts/${id}/messages`);
+  },
+
   // Exchange refresh token for a new access token
   async refreshToken() {
     const refresh_token = await tokenStorage.getRefreshToken();

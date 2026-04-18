@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,103 +7,39 @@ import {
   StyleSheet,
   ScrollView,
   FlatList,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, FONTS, SIZES } from '../constants/theme';
 import TopNavBar from '../components/TopNavBar';
+import { api } from '../services/api';
 
-const ACCOUNTS = [
-  {
-    id: '1',
-    name: 'Arlington Logistics Group',
-    status: 'OVERDUE',
-    amountLabel: 'TOTAL EXPOSURE',
-    amount: '$42,980.50',
-    secondaryLabel: 'AGING',
-    secondaryValue: '45 Days',
-    dot: 'red',
-  },
-  {
-    id: '2',
-    name: 'Global Tech Solutions',
-    status: 'PENDING',
-    amountLabel: 'CURRENT BALANCE',
-    amount: '$12,400.00',
-    secondaryLabel: 'DUE IN',
-    secondaryValue: '08 Days',
-    dot: 'yellow',
-  },
-  {
-    id: '3',
-    name: 'North Star Construction',
-    status: 'PAID',
-    amountLabel: '',
-    amount: '$8,200.00',
-    secondaryLabel: 'Ref:',
-    secondaryValue: '#9928-AX',
-    dot: 'green',
-    hasIcon: true,
-  },
-  {
-    id: '4',
-    name: 'Apex Retail Partners',
-    status: 'OVERDUE',
-    amountLabel: 'CRITICAL AMOUNT',
-    amount: '$128,500.00',
-    secondaryLabel: 'AGING',
-    secondaryValue: '92 Days',
-    dot: 'red',
-  },
-  {
-    id: '5',
-    name: 'Zenith Media Group',
-    status: 'OVERDUE',
-    amountLabel: 'EXPOSURE',
-    amount: '$3,450.00',
-    secondaryLabel: 'AGING',
-    secondaryValue: '12 Days',
-    dot: 'red',
-  },
-  {
-    id: '6',
-    name: 'Pacific Ridge Ventures',
-    status: 'PENDING',
-    amountLabel: 'CURRENT BALANCE',
-    amount: '$67,200.00',
-    secondaryLabel: 'DUE IN',
-    secondaryValue: '03 Days',
-    dot: 'yellow',
-  },
-  {
-    id: '7',
-    name: 'Summit Financial Corp',
-    status: 'PAID',
-    amountLabel: '',
-    amount: '$22,000.00',
-    secondaryLabel: 'Ref:',
-    secondaryValue: '#4471-BZ',
-    dot: 'green',
-    hasIcon: true,
-  },
-];
-
-const FILTERS = ['ALL ACCOUNTS', 'OVERDUE', 'PENDING', 'PAID'];
+const FILTERS = ['ALL', 'CURRENT', 'OVERDUE', 'PENDING'];
 
 const STATUS_CONFIG = {
+  CURRENT: { bg: '#EAFAF1', text: '#27AE60', label: 'CURRENT' },
   OVERDUE: { bg: '#FDECEA', text: '#E74C3C', label: 'OVERDUE' },
   PENDING: { bg: '#EBF5FB', text: '#2980B9', label: 'PENDING' },
-  PAID:    { bg: '#EAFAF1', text: '#27AE60', label: 'PAID' },
+  PAID:    { bg: '#EAFAF1', text: '#27AE60', label: 'PAID'    },
 };
 
-const DOT_COLORS = {
-  red: '#E74C3C',
-  yellow: '#F39C12',
-  green: '#27AE60',
+const DOT_COLOR = {
+  CURRENT: '#27AE60',
+  OVERDUE: '#E74C3C',
+  PENDING: '#F39C12',
+  PAID:    '#27AE60',
 };
+
+function fmt(amount) {
+  if (amount == null) return '$0.00';
+  return '$' + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 function AccountCard({ item, onPress }) {
-  const statusCfg = STATUS_CONFIG[item.status];
-  const isOverdue = item.status === 'OVERDUE';
+  const status    = item.account_status || 'CURRENT';
+  const statusCfg = STATUS_CONFIG[status] || STATUS_CONFIG.CURRENT;
+
   return (
     <TouchableOpacity style={styles.card} activeOpacity={0.85} onPress={onPress}>
       <View style={styles.cardRow}>
@@ -111,20 +47,16 @@ function AccountCard({ item, onPress }) {
         {/* Left side */}
         <View style={styles.cardLeft}>
           <View style={styles.nameRow}>
-            <View style={[styles.dot, { backgroundColor: DOT_COLORS[item.dot] }]} />
-            {item.hasIcon && (
-              <View style={styles.companyIconBox}>
-                <Text style={styles.companyIconText}>🏢</Text>
-              </View>
-            )}
-            <Text style={styles.cardName}>{item.name}</Text>
+            <View style={[styles.dot, { backgroundColor: DOT_COLOR[status] || '#27AE60' }]} />
+            <Text style={styles.cardName} numberOfLines={1}>{item.full_name}</Text>
           </View>
 
-          {item.amountLabel ? (
-            <Text style={styles.amountLabel}>{item.amountLabel}</Text>
+          {item.company_name ? (
+            <Text style={styles.companyName} numberOfLines={1}>{item.company_name}</Text>
           ) : null}
 
-          <Text style={styles.amount}>{item.amount}</Text>
+          <Text style={styles.amountLabel}>PAYMENT AMOUNT</Text>
+          <Text style={styles.amount}>{fmt(item.total_balance)}</Text>
         </View>
 
         {/* Right side */}
@@ -135,9 +67,9 @@ function AccountCard({ item, onPress }) {
             </Text>
           </View>
 
-          <Text style={styles.secondaryLabel}>{item.secondaryLabel}</Text>
-          <Text style={[styles.secondaryValue, isOverdue && styles.secondaryValueRed]}>
-            {item.secondaryValue}
+          <Text style={styles.secondaryLabel}>INTERVAL</Text>
+          <Text style={styles.secondaryValue}>
+            {item.next_review || '—'}
           </Text>
         </View>
 
@@ -147,13 +79,34 @@ function AccountCard({ item, onPress }) {
 }
 
 export default function AccountsScreen({ navigation }) {
-  const [activeFilter, setActiveFilter] = useState('ALL ACCOUNTS');
-  const [search, setSearch] = useState('');
+  const [activeFilter, setActiveFilter] = useState('ALL');
+  const [search, setSearch]             = useState('');
+  const [users, setUsers]               = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState(null);
 
-  const filtered = ACCOUNTS.filter((a) => {
-    const matchesFilter = activeFilter === 'ALL ACCOUNTS' || a.status === activeFilter;
-    const matchesSearch = a.name.toLowerCase().includes(search.toLowerCase());
-    return matchesFilter && matchesSearch;
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      setLoading(true);
+      setError(null);
+
+      api.listUsers()
+        .then(({ users: data }) => { if (active) setUsers(data || []); })
+        .catch((err) => { if (active) setError(err.message); })
+        .finally(() => { if (active) setLoading(false); });
+
+      return () => { active = false; };
+    }, [])
+  );
+
+  const filtered = users.filter((u) => {
+    const status       = u.account_status || 'CURRENT';
+    const matchFilter  = activeFilter === 'ALL' || status === activeFilter;
+    const matchSearch  = (u.full_name || '').toLowerCase().includes(search.toLowerCase())
+                      || (u.username  || '').toLowerCase().includes(search.toLowerCase())
+                      || (u.company_name || '').toLowerCase().includes(search.toLowerCase());
+    return matchFilter && matchSearch;
   });
 
   return (
@@ -166,7 +119,7 @@ export default function AccountsScreen({ navigation }) {
         <Text style={styles.searchIcon}>🔍</Text>
         <TextInput
           style={styles.searchInput}
-          placeholder="Search accounts, names, or IDs..."
+          placeholder="Search clients, usernames, or companies..."
           placeholderTextColor={COLORS.grayLight}
           value={search}
           onChangeText={setSearch}
@@ -190,7 +143,7 @@ export default function AccountsScreen({ navigation }) {
             activeOpacity={0.8}
           >
             <Text style={[styles.filterTabText, activeFilter === f && styles.filterTabTextActive]}>
-              {f}
+              {f === 'ALL' ? 'ALL ACCOUNTS' : f}
             </Text>
           </TouchableOpacity>
         ))}
@@ -198,31 +151,47 @@ export default function AccountsScreen({ navigation }) {
 
       {/* List header */}
       <View style={styles.listHeader}>
-        <Text style={styles.listHeaderLeft}>ACCOUNT LEDGER</Text>
-        <TouchableOpacity style={styles.sortRow}>
-          <Text style={styles.sortText}>SORT BY: DAYS OVERDUE</Text>
-          <Text style={styles.sortChevron}> ↓</Text>
-        </TouchableOpacity>
+        <Text style={styles.listHeaderLeft}>CLIENT LEDGER</Text>
+        <Text style={styles.listCount}>{filtered.length} CLIENT{filtered.length !== 1 ? 'S' : ''}</Text>
       </View>
 
-      {/* Accounts list */}
-      <FlatList
-        data={filtered}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
+      {/* Body */}
+      {loading ? (
+        <View style={styles.centered}>
+          <ActivityIndicator size="large" color={COLORS.navy} />
+        </View>
+      ) : error ? (
+        <View style={styles.centered}>
+          <Text style={styles.errorText}>{error}</Text>
+          <TouchableOpacity onPress={() => {
+            setLoading(true);
+            api.listUsers()
+              .then(({ users: data }) => setUsers(data || []))
+              .catch((e) => setError(e.message))
+              .finally(() => setLoading(false));
+          }}>
+            <Text style={styles.retryText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <FlatList
+          data={filtered}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
             <AccountCard
               item={item}
               onPress={() => navigation.navigate('AccountDetail', { account: item })}
             />
           )}
-        contentContainerStyle={styles.listContent}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={styles.emptyBox}>
-            <Text style={styles.emptyText}>No accounts found.</Text>
-          </View>
-        }
-      />
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyBox}>
+              <Text style={styles.emptyText}>No clients found.</Text>
+            </View>
+          }
+        />
+      )}
 
     </SafeAreaView>
   );
@@ -249,21 +218,14 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 1,
   },
-  searchIcon: {
-    fontSize: 15,
-    marginRight: 8,
-    color: COLORS.gray,
-  },
+  searchIcon: { fontSize: 15, marginRight: 8, color: COLORS.gray },
   searchInput: {
     flex: 1,
     fontSize: SIZES.md,
     color: COLORS.navy,
     height: '100%',
   },
-  filterScroll: {
-    marginVertical: 12,
-    flexGrow: 0,
-  },
+  filterScroll: { marginVertical: 12, flexGrow: 0 },
   filterRow: {
     paddingHorizontal: 16,
     gap: 8,
@@ -280,19 +242,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  filterTabActive: {
-    backgroundColor: COLORS.navy,
-    borderColor: COLORS.navy,
-  },
+  filterTabActive: { backgroundColor: COLORS.navy, borderColor: COLORS.navy },
   filterTabText: {
     fontSize: SIZES.xs,
     color: COLORS.gray,
     ...FONTS.bold,
     letterSpacing: 0.8,
   },
-  filterTabTextActive: {
-    color: COLORS.white,
-  },
+  filterTabTextActive: { color: COLORS.white },
   listHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -306,20 +263,11 @@ const styles = StyleSheet.create({
     ...FONTS.bold,
     letterSpacing: 1.2,
   },
-  sortRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  sortText: {
+  listCount: {
     fontSize: SIZES.xs,
     color: COLORS.navy,
     ...FONTS.bold,
     letterSpacing: 0.8,
-  },
-  sortChevron: {
-    fontSize: SIZES.xs,
-    color: COLORS.navy,
-    ...FONTS.bold,
   },
   listContent: {
     paddingHorizontal: 16,
@@ -341,14 +289,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
   },
-  cardLeft: {
-    flex: 1,
-    marginRight: 12,
-  },
+  cardLeft: { flex: 1, marginRight: 12 },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 3,
     flexWrap: 'wrap',
   },
   dot: {
@@ -358,23 +303,18 @@ const styles = StyleSheet.create({
     marginRight: 7,
     flexShrink: 0,
   },
-  companyIconBox: {
-    width: 32,
-    height: 32,
-    backgroundColor: COLORS.inputBg,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  companyIconText: {
-    fontSize: 15,
-  },
   cardName: {
     fontSize: SIZES.md,
     color: COLORS.navy,
     ...FONTS.bold,
     flexShrink: 1,
+  },
+  companyName: {
+    fontSize: SIZES.sm,
+    color: COLORS.gray,
+    ...FONTS.medium,
+    marginLeft: 16,
+    marginBottom: 6,
   },
   amountLabel: {
     fontSize: SIZES.xs,
@@ -391,21 +331,14 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
     marginLeft: 16,
   },
-  cardRight: {
-    alignItems: 'flex-end',
-    minWidth: 80,
-  },
+  cardRight: { alignItems: 'flex-end', minWidth: 80 },
   statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
     marginBottom: 8,
   },
-  statusText: {
-    fontSize: SIZES.xs,
-    ...FONTS.bold,
-    letterSpacing: 0.5,
-  },
+  statusText: { fontSize: SIZES.xs, ...FONTS.bold, letterSpacing: 0.5 },
   secondaryLabel: {
     fontSize: SIZES.xs,
     color: COLORS.gray,
@@ -417,16 +350,11 @@ const styles = StyleSheet.create({
     fontSize: SIZES.base,
     color: COLORS.navy,
     ...FONTS.bold,
+    textAlign: 'right',
   },
-  secondaryValueRed: {
-    color: '#E74C3C',
-  },
-  emptyBox: {
-    alignItems: 'center',
-    paddingTop: 60,
-  },
-  emptyText: {
-    color: COLORS.gray,
-    fontSize: SIZES.md,
-  },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  errorText: { color: '#E74C3C', fontSize: SIZES.md, marginBottom: 12, textAlign: 'center' },
+  retryText: { color: COLORS.navy, fontSize: SIZES.md, ...FONTS.bold },
+  emptyBox: { alignItems: 'center', paddingTop: 60 },
+  emptyText: { color: COLORS.gray, fontSize: SIZES.md },
 });

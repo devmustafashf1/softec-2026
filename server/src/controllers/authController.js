@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '../config/supabase.js';
+import { supabaseAdmin, supabase } from '../config/supabase.js';
 
 // ── POST /api/auth/register ──────────────────────────────────
 export async function register(req, res) {
@@ -52,7 +52,7 @@ export async function login(req, res) {
   }
 
   // signInWithPassword returns an access_token (JWT) + refresh_token
-  const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
@@ -137,7 +137,7 @@ export async function clientLogin(req, res) {
 
   const internalEmail = `${username.toLowerCase()}@client.sovereign.local`;
 
-  const { data, error } = await supabaseAdmin.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email: internalEmail,
     password,
   });
@@ -172,7 +172,7 @@ export async function refresh(req, res) {
     return res.status(400).json({ error: 'refresh_token is required' });
   }
 
-  const { data, error } = await supabaseAdmin.auth.refreshSession({ refresh_token });
+  const { data, error } = await supabase.auth.refreshSession({ refresh_token });
 
   if (error || !data.session) {
     return res.status(401).json({ error: 'Invalid or expired refresh token' });

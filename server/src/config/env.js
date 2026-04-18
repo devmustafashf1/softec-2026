@@ -8,4 +8,5 @@ export const config = {
   supabaseUrl: process.env.SUPABASE_URL,
   supabasePublishableKey: process.env.SUPABASE_PUBLISHABLE_KEY,
   supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+  deepseekApiKey: process.env.DEEPSEEK_API_KEY,
 };
