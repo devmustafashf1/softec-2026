@@ -114,6 +114,16 @@ export default function LoginScreen({ navigation }) {
           </View>
         </View>
 
+        {/* Client portal entry */}
+        <TouchableOpacity
+          style={styles.clientButton}
+          onPress={() => navigation.navigate('ClientLogin')}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.clientButtonIcon}>👤</Text>
+          <Text style={styles.clientButtonText}>Login as Client</Text>
+        </TouchableOpacity>
+
         {/* Security badges */}
         <View style={styles.badgeRow}>
           <View style={styles.badge}>
@@ -283,6 +293,27 @@ const styles = StyleSheet.create({
     color: COLORS.gray,
     textAlign: 'center',
     letterSpacing: 0.5,
+    ...FONTS.semiBold,
+  },
+  clientButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 16,
+    marginBottom: 8,
+    marginHorizontal: 4,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: SIZES.radiusSm,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.white,
+  },
+  clientButtonIcon: { fontSize: 16 },
+  clientButtonText: {
+    fontSize: SIZES.md,
+    color: COLORS.navy,
     ...FONTS.semiBold,
   },
 });
