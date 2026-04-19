@@ -41,7 +41,7 @@ export default function LoginScreen({ navigation }) {
 
         {/* Brand header */}
         <View style={styles.brandContainer}>
-          <Text style={styles.brandName}>Sovereign Ledger</Text>
+          <Text style={styles.brandName}>DueAssist</Text>
           <View style={styles.brandUnderline} />
         </View>
 

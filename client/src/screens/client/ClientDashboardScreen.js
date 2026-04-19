@@ -288,7 +288,7 @@ export default function ClientDashboardScreen({ route, navigation }) {
     <SafeAreaView style={styles.safe}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Sovereign Ledger</Text>
+        <Text style={styles.headerTitle}>DueAssist</Text>
         <View style={styles.headerRight}>
           <TouchableOpacity style={styles.bellBtn} onPress={handleBellPress} activeOpacity={0.7}>
             <Text style={styles.bellIcon}>🔔</Text>

@@ -11,7 +11,7 @@ import { api } from '../services/api';
 const INITIAL_MESSAGE = {
   id: 'init',
   role: 'assistant',
-  content: "Hello! I'm your Sovereign Ledger Collection Assistant.\n\nI have live access to all your client data — balances, statuses, and follow-up history. Ask me anything:\n\n• **Who is overdue?**\n• **Suggest a follow-up for [client name]**\n• **What's the portfolio summary?**\n• **Which clients haven't been contacted yet?**",
+  content: "Hello! I'm your DueAssist Collection Assistant.\n\nI have live access to all your client data — balances, statuses, and follow-up history. Ask me anything:\n\n• **Who is overdue?**\n• **Suggest a follow-up for [client name]**\n• **What's the portfolio summary?**\n• **Which clients haven't been contacted yet?**",
   time: new Date(),
 };
 

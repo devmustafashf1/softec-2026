@@ -63,7 +63,7 @@ export default function RegisterScreen({ navigation }) {
 
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerBrand}>Sovereign Ledger</Text>
+          <Text style={styles.headerBrand}>DueAssist</Text>
         </View>
 
         {/* Hero */}

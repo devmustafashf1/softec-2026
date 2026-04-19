@@ -11,19 +11,21 @@ import {
   StatusBar,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { COLORS, FONTS, SIZES } from '../constants/theme';
 import { api } from '../services/api';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.78, 300);
 
+// icon: [library, name]
 const MENU_ITEMS = [
-  { key: 'Dashboard', label: 'Dashboard',        icon: '⊞', desc: 'Portfolio overview',   isTab: true  },
-  { key: 'Accounts',  label: 'Accounts',         icon: '🗂', desc: 'Manage accounts',     isTab: true  },
-  { key: 'AI',        label: 'AI Assistant',     icon: '✦', desc: 'Collection AI agent',  isTab: true  },
-  { key: 'Payments',  label: 'Payments',         icon: '💳', desc: 'Payment records',     isTab: true  },
-  { key: 'Reports',   label: 'Reports',          icon: '📊', desc: 'Analytics & data',    isTab: true  },
-  { key: 'Users',     label: 'Users',            icon: '👥', desc: 'Manage client users', isTab: false },
+  { key: 'Dashboard', label: 'Dashboard',    iconLib: 'Feather', icon: 'grid',               desc: 'Portfolio overview',   isTab: true  },
+  { key: 'Accounts',  label: 'Accounts',     iconLib: 'Feather', icon: 'briefcase',           desc: 'Manage accounts',      isTab: true  },
+  { key: 'AI',        label: 'AI Assistant', iconLib: 'MCI',     icon: 'robot-outline',       desc: 'Collection AI agent',  isTab: true  },
+  { key: 'Payments',  label: 'Payments',     iconLib: 'Feather', icon: 'credit-card',         desc: 'Payment records',      isTab: true  },
+  { key: 'Reports',   label: 'Reports',      iconLib: 'Feather', icon: 'bar-chart-2',         desc: 'Analytics & data',     isTab: true  },
+  { key: 'Users',     label: 'Users',        iconLib: 'Feather', icon: 'users',               desc: 'Manage client users',  isTab: false },
 ];
 
 export default function TopNavBar({ navigation, showBack = false }) {
@@ -109,7 +111,7 @@ export default function TopNavBar({ navigation, showBack = false }) {
           </TouchableOpacity>
         )}
 
-        <Text style={styles.navBrand}>SOVEREIGN LEDGER</Text>
+        <Text style={styles.navBrand}>DUEASSIST</Text>
 
         <TouchableOpacity onPress={() => setProfileVisible(true)} style={styles.avatar} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
           <Text style={styles.avatarText}>
@@ -131,11 +133,11 @@ export default function TopNavBar({ navigation, showBack = false }) {
           {/* Header */}
           <View style={styles.drawerHeader}>
             <View style={styles.drawerLogoBox}>
-              <Text style={styles.drawerLogoText}>SL</Text>
+              <Text style={styles.drawerLogoText}>DA</Text>
             </View>
             <View>
-              <Text style={styles.drawerBrand}>SOVEREIGN</Text>
-              <Text style={styles.drawerBrand}>LEDGER</Text>
+              <Text style={styles.drawerBrand}>DUE</Text>
+              <Text style={styles.drawerBrand}>ASSIST</Text>
               <Text style={styles.drawerSub}>Debt Recovery Platform</Text>
             </View>
           </View>
@@ -152,7 +154,9 @@ export default function TopNavBar({ navigation, showBack = false }) {
                 activeOpacity={0.7}
               >
                 <View style={styles.drawerItemIcon}>
-                  <Text style={styles.drawerItemEmoji}>{item.icon}</Text>
+                  {item.iconLib === 'MCI'
+                    ? <MaterialCommunityIcons name={item.icon} size={19} color="rgba(255,255,255,0.85)" />
+                    : <Feather name={item.icon} size={17} color="rgba(255,255,255,0.85)" />}
                 </View>
                 <View>
                   <Text style={styles.drawerItemLabel}>{item.label}</Text>
@@ -167,7 +171,7 @@ export default function TopNavBar({ navigation, showBack = false }) {
             <View style={styles.drawerDivider} />
             <TouchableOpacity style={styles.drawerSignOut} onPress={handleLogout} activeOpacity={0.7}>
               <View style={[styles.drawerItemIcon, { backgroundColor: 'rgba(231,76,60,0.15)' }]}>
-                <Text style={styles.drawerItemEmoji}>⎋</Text>
+                <MaterialCommunityIcons name="logout" size={18} color="#E74C3C" />
               </View>
               <Text style={styles.drawerSignOutText}>Sign Out</Text>
             </TouchableOpacity>
@@ -199,7 +203,7 @@ export default function TopNavBar({ navigation, showBack = false }) {
 
           {/* Logout button */}
           <TouchableOpacity style={styles.logoutRow} onPress={handleLogout} activeOpacity={0.7}>
-            <Text style={styles.logoutIcon}>⎋</Text>
+            <MaterialCommunityIcons name="logout" size={17} color={COLORS.red} />
             <Text style={styles.logoutText}>Sign Out</Text>
           </TouchableOpacity>
         </View>
@@ -301,7 +305,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center', justifyContent: 'center',
   },
-  drawerItemEmoji: { fontSize: 17 },
   drawerItemLabel: {
     color: COLORS.white, fontSize: SIZES.base, ...FONTS.semiBold,
   },
@@ -374,7 +377,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  logoutIcon: { fontSize: 16, color: COLORS.red },
   logoutText: {
     fontSize: SIZES.md, color: COLORS.red, ...FONTS.semiBold,
   },

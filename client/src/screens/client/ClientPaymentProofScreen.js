@@ -72,7 +72,7 @@ export default function ClientPaymentProofScreen({ route, navigation }) {
     <SafeAreaView style={styles.safe}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Sovereign Ledger</Text>
+        <Text style={styles.headerTitle}>DueAssist</Text>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>

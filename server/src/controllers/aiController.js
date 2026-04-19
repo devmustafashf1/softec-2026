@@ -229,7 +229,7 @@ export async function chat(req, res) {
     const currentList  = byStatus('CURRENT');
     const paidList     = byStatus('PAID');
 
-    const systemPrompt = `You are an AI Collection Assistant for Sovereign Ledger, a debt recovery platform. You help the admin manage accounts, track payments, and send follow-up messages to clients.
+    const systemPrompt = `You are an AI Collection Assistant for DueAssist, a debt recovery platform. You help the admin manage accounts, track payments, and send follow-up messages to clients.
 
 TODAY: ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
 

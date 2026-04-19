@@ -1,13 +1,14 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { COLORS, FONTS, SIZES } from '../constants/theme';
 
 const TABS = [
-  { key: 'Dashboard', label: 'DASHBOARD', icon: '⊞' },
-  { key: 'Accounts',  label: 'ACCOUNTS',  icon: '🗂' },
-  { key: 'AI',        label: 'AI',        icon: null, isCenter: true },
-  { key: 'Payments',  label: 'PAYMENTS',  icon: '💳' },
-  { key: 'Reports',   label: 'REPORTS',   icon: '📊' },
+  { key: 'Dashboard', label: 'DASHBOARD', icon: 'grid',          lib: 'Feather' },
+  { key: 'Accounts',  label: 'ACCOUNTS',  icon: 'briefcase',     lib: 'Feather' },
+  { key: 'AI',        label: 'AI',        icon: null,             isCenter: true },
+  { key: 'Payments',  label: 'PAYMENTS',  icon: 'credit-card',   lib: 'Feather' },
+  { key: 'Reports',   label: 'REPORTS',   icon: 'bar-chart-2',   lib: 'Feather' },
 ];
 
 export default function CustomTabBar({ state, descriptors, navigation }) {
@@ -27,7 +28,7 @@ export default function CustomTabBar({ state, descriptors, navigation }) {
               activeOpacity={0.85}
             >
               <View style={[styles.centerBtn, isFocused && styles.centerBtnActive]}>
-                <Text style={styles.centerBtnText}>✦</Text>
+                <MaterialCommunityIcons name="robot-outline" size={22} color={COLORS.white} />
                 <Text style={styles.centerBtnLabel}>AI</Text>
               </View>
             </TouchableOpacity>
@@ -42,7 +43,11 @@ export default function CustomTabBar({ state, descriptors, navigation }) {
             activeOpacity={0.7}
           >
             <View style={[styles.iconWrapper, isFocused && styles.iconWrapperActive]}>
-              <Text style={[styles.icon, isFocused && styles.iconActive]}>{tab.icon}</Text>
+              <Feather
+                name={tab.icon}
+                size={18}
+                color={isFocused ? COLORS.navy : COLORS.grayLight}
+              />
             </View>
             <Text style={[styles.label, isFocused && styles.labelActive]}>{tab.label}</Text>
           </TouchableOpacity>
@@ -79,13 +84,6 @@ const styles = StyleSheet.create({
   },
   iconWrapperActive: {
     backgroundColor: '#EEF2FF',
-  },
-  icon: {
-    fontSize: 17,
-    color: COLORS.grayLight,
-  },
-  iconActive: {
-    color: COLORS.navy,
   },
   label: {
     fontSize: 8,

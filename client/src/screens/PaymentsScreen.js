@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   FlatList,
   TouchableOpacity,
   StyleSheet,
+  Animated,
   ActivityIndicator,
   Alert,
   Image,
@@ -26,6 +27,60 @@ const PROOF_STATUS = {
   VERIFIED: { bg: '#EAFAF1', text: '#27AE60', label: 'Verified'  },
   REJECTED: { bg: '#FDECEA', text: '#E74C3C', label: 'Rejected'  },
 };
+
+function useShimmer() {
+  const anim = useRef(new Animated.Value(0.4)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 1, duration: 750, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0.4, duration: 750, useNativeDriver: true }),
+      ])
+    ).start();
+  }, [anim]);
+  return anim;
+}
+
+function SkeletonBox({ width, height, style }) {
+  const opacity = useShimmer();
+  return (
+    <Animated.View
+      style={[{ width, height, borderRadius: 6, backgroundColor: '#E2E8F0', opacity }, style]}
+    />
+  );
+}
+
+function PaymentCardSkeleton() {
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardRow}>
+        {/* Thumbnail placeholder */}
+        <SkeletonBox width={88} height={88} style={{ borderRadius: 10, flexShrink: 0 }} />
+
+        {/* Info column */}
+        <View style={[styles.info, { gap: 6 }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <SkeletonBox width={110} height={13} />
+            <SkeletonBox width={60} height={22} style={{ borderRadius: 5 }} />
+          </View>
+          <SkeletonBox width={70} height={10} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+            <SkeletonBox width={26} height={10} />
+            <SkeletonBox width={100} height={10} />
+          </View>
+          <SkeletonBox width={130} height={10} style={{ marginTop: 2 }} />
+          <SkeletonBox width={50}  height={9}  style={{ marginTop: 2 }} />
+        </View>
+      </View>
+
+      {/* Action buttons placeholder */}
+      <View style={[styles.actions, { paddingTop: 8 }]}>
+        <SkeletonBox width="48%" height={36} style={{ borderRadius: 8 }} />
+        <SkeletonBox width="48%" height={36} style={{ borderRadius: 8 }} />
+      </View>
+    </View>
+  );
+}
 
 function timeAgo(dateStr) {
   if (!dateStr) return '';
@@ -246,9 +301,9 @@ export default function PaymentsScreen({ navigation, route }) {
       </View>
 
       {loading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={COLORS.navy} />
-        </View>
+        <ScrollView contentContainerStyle={[styles.listContent, { paddingTop: 0 }]} showsVerticalScrollIndicator={false}>
+          {Array.from({ length: 4 }).map((_, i) => <PaymentCardSkeleton key={i} />)}
+        </ScrollView>
       ) : (
         <FlatList
           data={filtered}
@@ -294,7 +349,6 @@ export default function PaymentsScreen({ navigation, route }) {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: COLORS.lightBg },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   filterScroll: { flexGrow: 0, marginTop: 14, marginBottom: 10 },
   filterRow: { paddingHorizontal: 16, gap: 8, flexDirection: 'row', alignItems: 'center' },

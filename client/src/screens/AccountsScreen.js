@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   StyleSheet,
   ScrollView,
   FlatList,
-  ActivityIndicator,
+  Animated,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -34,6 +34,51 @@ const DOT_COLOR = {
 function fmt(amount) {
   if (amount == null) return '$0.00';
   return '$' + Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function useShimmer() {
+  const anim = useRef(new Animated.Value(0.4)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 1, duration: 750, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0.4, duration: 750, useNativeDriver: true }),
+      ])
+    ).start();
+  }, [anim]);
+  return anim;
+}
+
+function SkeletonBox({ width, height, style }) {
+  const opacity = useShimmer();
+  return (
+    <Animated.View
+      style={[{ width, height, borderRadius: 6, backgroundColor: '#E2E8F0', opacity }, style]}
+    />
+  );
+}
+
+function AccountCardSkeleton() {
+  return (
+    <View style={styles.card}>
+      <View style={styles.cardRow}>
+        <View style={[styles.cardLeft, { gap: 8 }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+            <SkeletonBox width={9} height={9} style={{ borderRadius: 5 }} />
+            <SkeletonBox width={130} height={14} />
+          </View>
+          <SkeletonBox width={90} height={11} style={{ marginLeft: 16 }} />
+          <SkeletonBox width={100} height={9}  style={{ marginLeft: 16, marginTop: 4 }} />
+          <SkeletonBox width={80}  height={22} style={{ marginLeft: 16 }} />
+        </View>
+        <View style={[styles.cardRight, { gap: 8 }]}>
+          <SkeletonBox width={66} height={24} style={{ borderRadius: 6 }} />
+          <SkeletonBox width={50} height={9} />
+          <SkeletonBox width={60} height={13} />
+        </View>
+      </View>
+    </View>
+  );
 }
 
 function AccountCard({ item, onPress }) {
@@ -157,8 +202,8 @@ export default function AccountsScreen({ navigation }) {
 
       {/* Body */}
       {loading ? (
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={COLORS.navy} />
+        <View style={styles.listContent}>
+          {Array.from({ length: 6 }).map((_, i) => <AccountCardSkeleton key={i} />)}
         </View>
       ) : error ? (
         <View style={styles.centered}>
@@ -273,6 +318,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 20,
     gap: 10,
+    paddingTop: 0,
   },
   card: {
     backgroundColor: COLORS.white,

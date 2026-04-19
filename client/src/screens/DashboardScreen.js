@@ -151,7 +151,7 @@ export default function DashboardScreen({ navigation }) {
 
         {/* Portfolio Header */}
         <View style={styles.portfolioSection}>
-          <Text style={styles.portfolioLabel}>THE SOVEREIGN LEDGER | PORTFOLIO STATUS</Text>
+          <Text style={styles.portfolioLabel}>DUEASSIST | PORTFOLIO STATUS</Text>
           {loadingStats
             ? <ActivityIndicator color={COLORS.navy} style={{ marginVertical: 14 }} />
             : <Text style={styles.portfolioAmount}>{fmt(stats?.totalBalance ?? 0)}</Text>}
