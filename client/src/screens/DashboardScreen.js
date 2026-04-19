@@ -139,8 +139,8 @@ export default function DashboardScreen({ navigation }) {
     loadStats(); // refresh numbers after bulk send
   }
 
-  const recoveryRate = stats && stats.totalBalance > 0
-    ? ((stats.totalPaid / stats.totalBalance) * 100).toFixed(1)
+  const recoveryRate = stats && stats.totalAccounts > 0
+    ? ((stats.clientsWithPayments / stats.totalAccounts) * 100).toFixed(1)
     : null;
 
   return (
@@ -202,7 +202,7 @@ export default function DashboardScreen({ navigation }) {
               <Text style={styles.statValue}>{recoveryRate ? `${recoveryRate}%` : '—'}</Text>
               <Text style={styles.optimalBadge}>{recoveryRate && Number(recoveryRate) >= 50 ? 'Optimal' : 'Building'}</Text>
             </View>
-            <Text style={styles.statSubtext}>↗  Paid vs outstanding balance</Text>
+            <Text style={styles.statSubtext}>↗  Clients with any payment made</Text>
           </View>
 
           <View style={styles.statCard}>

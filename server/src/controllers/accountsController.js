@@ -106,9 +106,9 @@ export async function getDashboardStats(req, res) {
   const all     = data || [];
   const clients = all.filter(c => c.is_active);
 
-  const totalBalance = clients.reduce((s, c) => s + (Number(c.total_balance) || 0), 0);
-  // Include deactivated users' historical payments in the collected total
-  const totalPaid    = all.reduce((s, c) => s + (Number(c.amount_paid) || 0), 0);
+  const totalBalance        = clients.reduce((s, c) => s + (Number(c.total_balance) || 0), 0);
+  const totalPaid           = all.reduce((s, c) => s + (Number(c.amount_paid) || 0), 0);
+  const clientsWithPayments = clients.filter(c => Number(c.amount_paid) > 0).length;
   const byStatus = { CURRENT: 0, PENDING: 0, OVERDUE: 0, PAID: 0 };
   clients.forEach(c => { if (byStatus[c.account_status] !== undefined) byStatus[c.account_status]++; });
 
@@ -117,7 +117,7 @@ export async function getDashboardStats(req, res) {
     .slice(0, 3)
     .map(c => ({ id: c.id, name: c.full_name, username: c.username, company: c.company_name, balance: c.total_balance }));
 
-  return res.status(200).json({ totalAccounts: clients.length, totalBalance, totalPaid, byStatus, overdueClients });
+  return res.status(200).json({ totalAccounts: clients.length, totalBalance, totalPaid, clientsWithPayments, byStatus, overdueClients });
 }
 
 // ── GET /api/accounts/clients?statuses=OVERDUE,PENDING ───────

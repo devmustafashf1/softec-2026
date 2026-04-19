@@ -226,6 +226,14 @@ export const api = {
     return request(`/accounts/${id}/payment-proofs/${proofId}`, { method: 'DELETE' });
   },
 
+  // ── AI Assistant ──────────────────────────────────────────
+  async aiChat({ message, history = [] }) {
+    return request('/ai/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message, history }),
+    });
+  },
+
   // Exchange refresh token for a new access token
   async refreshToken() {
     const refresh_token = await tokenStorage.getRefreshToken();
