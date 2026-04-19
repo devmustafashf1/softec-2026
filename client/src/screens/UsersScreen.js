@@ -18,7 +18,7 @@ import { COLORS, FONTS, SIZES } from '../constants/theme';
 import TopNavBar from '../components/TopNavBar';
 import { api } from '../services/api';
 
-function UserCard({ user, onToggle }) {
+function UserCard({ user, onToggle, onEditPayment, onDelete }) {
   const initials = user.full_name
     ? user.full_name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase()
     : '??';
@@ -44,12 +44,19 @@ function UserCard({ user, onToggle }) {
       </View>
 
       <View style={styles.cardStats}>
-        <View style={styles.cardStat}>
-          <Text style={styles.cardStatLabel}>PAYMENT</Text>
+        <TouchableOpacity
+          style={[styles.cardStat, styles.cardStatEditable]}
+          onPress={() => onEditPayment(user)}
+          activeOpacity={0.75}
+        >
+          <View style={styles.cardStatLabelRow}>
+            <Text style={styles.cardStatLabel}>PAYMENT</Text>
+            <Text style={styles.editPencil}>✎</Text>
+          </View>
           <Text style={styles.cardStatValue}>
             ${(user.total_balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
           </Text>
-        </View>
+        </TouchableOpacity>
         <View style={styles.cardStat}>
           <Text style={styles.cardStatLabel}>INTERVAL</Text>
           <Text style={styles.cardStatValue}>{user.next_review || '—'}</Text>
@@ -58,12 +65,17 @@ function UserCard({ user, onToggle }) {
 
       <View style={styles.cardFooter}>
         <Text style={styles.activeLabel}>{user.is_active ? 'ACTIVE' : 'INACTIVE'}</Text>
-        <Switch
-          value={user.is_active}
-          onValueChange={(val) => onToggle(user.id, val)}
-          trackColor={{ false: COLORS.border, true: COLORS.green }}
-          thumbColor={COLORS.white}
-        />
+        <View style={styles.cardFooterRight}>
+          <Switch
+            value={user.is_active}
+            onValueChange={(val) => onToggle(user.id, val)}
+            trackColor={{ false: COLORS.border, true: COLORS.green }}
+            thumbColor={COLORS.white}
+          />
+          <TouchableOpacity style={styles.deleteBtn} onPress={() => onDelete(user)} activeOpacity={0.75}>
+            <Text style={styles.deleteBtnText}>DELETE</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
@@ -76,6 +88,11 @@ export default function UsersScreen({ navigation }) {
   const [modalVisible, setModalVisible] = useState(false);
   const [saving, setSaving] = useState(false);
   const [adminCompany, setAdminCompany] = useState('');
+
+  // Edit payment modal
+  const [editTarget, setEditTarget]   = useState(null); // the user being edited
+  const [editAmount, setEditAmount]   = useState('');
+  const [editSaving, setEditSaving]   = useState(false);
 
   // Form state
   const [fullName, setFullName] = useState('');
@@ -130,6 +147,68 @@ export default function UsersScreen({ navigation }) {
       setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, is_active: !is_active } : u)));
       Alert.alert('Error', err.message || 'Failed to update status.');
     }
+  };
+
+  const handleDelete = (user) => {
+    Alert.alert(
+      'Delete User',
+      `Permanently delete ${user.full_name} (@${user.username})? This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api.deleteUser(user.id);
+              setUsers((prev) => prev.filter((u) => u.id !== user.id));
+            } catch (err) {
+              Alert.alert('Error', err.message || 'Failed to delete user.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const openEditPayment = (user) => {
+    setEditTarget(user);
+    setEditAmount(String(user.total_balance ?? ''));
+  };
+
+  const handleConfirmEditPayment = () => {
+    const amount = parseFloat(editAmount);
+    if (isNaN(amount) || amount < 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid non-negative number.');
+      return;
+    }
+    const oldFmt = `$${(editTarget.total_balance ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+    const newFmt = `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+
+    Alert.alert(
+      'Confirm Payment Update',
+      `Change payment for ${editTarget.full_name} from ${oldFmt} to ${newFmt}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Update',
+          onPress: async () => {
+            setEditSaving(true);
+            try {
+              await api.updateUserPayment(editTarget.id, amount);
+              setUsers((prev) =>
+                prev.map((u) => u.id === editTarget.id ? { ...u, total_balance: amount } : u)
+              );
+              setEditTarget(null);
+            } catch (err) {
+              Alert.alert('Error', err.message || 'Failed to update payment.');
+            } finally {
+              setEditSaving(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const resetForm = () => {
@@ -198,12 +277,66 @@ export default function UsersScreen({ navigation }) {
             </View>
           ) : (
             users.map((user) => (
-              <UserCard key={user.id} user={user} onToggle={handleToggle} />
+              <UserCard key={user.id} user={user} onToggle={handleToggle} onEditPayment={openEditPayment} onDelete={handleDelete} />
             ))
           )}
           <View style={{ height: 24 }} />
         </ScrollView>
       )}
+
+      {/* Edit Payment Modal */}
+      <Modal
+        visible={!!editTarget}
+        transparent
+        animationType="fade"
+        onRequestClose={() => !editSaving && setEditTarget(null)}
+      >
+        <TouchableOpacity
+          style={styles.editOverlay}
+          activeOpacity={1}
+          onPress={() => !editSaving && setEditTarget(null)}
+        >
+          <TouchableOpacity activeOpacity={1} style={styles.editCard}>
+            <Text style={styles.editTitle}>Edit Payment Amount</Text>
+            {editTarget && (
+              <Text style={styles.editSubtitle}>{editTarget.full_name}</Text>
+            )}
+
+            <Text style={styles.editLabel}>NEW AMOUNT ($)</Text>
+            <TextInput
+              style={styles.editInput}
+              value={editAmount}
+              onChangeText={setEditAmount}
+              keyboardType="decimal-pad"
+              placeholder="0.00"
+              placeholderTextColor={COLORS.grayLight}
+              autoFocus
+              selectTextOnFocus
+            />
+
+            <View style={styles.editActions}>
+              <TouchableOpacity
+                style={styles.editCancelBtn}
+                onPress={() => setEditTarget(null)}
+                disabled={editSaving}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.editCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.editConfirmBtn, editSaving && { opacity: 0.65 }]}
+                onPress={handleConfirmEditPayment}
+                disabled={editSaving}
+                activeOpacity={0.85}
+              >
+                {editSaving
+                  ? <ActivityIndicator color={COLORS.white} size="small" />
+                  : <Text style={styles.editConfirmText}>Update</Text>}
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Create User Modal */}
       <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => { setModalVisible(false); resetForm(); }}>
@@ -397,6 +530,13 @@ const styles = StyleSheet.create({
     borderTopColor: COLORS.border,
   },
   activeLabel: { fontSize: SIZES.xs, color: COLORS.gray, ...FONTS.bold, letterSpacing: 1 },
+  cardFooterRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  deleteBtn: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: SIZES.radiusSm,
+    borderWidth: 1.5, borderColor: '#E53935',
+  },
+  deleteBtnText: { fontSize: SIZES.xs, color: '#E53935', ...FONTS.bold, letterSpacing: 0.8 },
 
   // Modal
   modalSafe: { flex: 1, backgroundColor: COLORS.white },
@@ -496,4 +636,68 @@ const styles = StyleSheet.create({
   },
   createBtnDisabled: { opacity: 0.7 },
   createBtnText: { color: COLORS.white, fontSize: SIZES.md, ...FONTS.bold, letterSpacing: 0.5 },
+
+  // Editable payment stat
+  cardStatEditable: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+  },
+  cardStatLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 3,
+  },
+  editPencil: { fontSize: 13, color: COLORS.navy, opacity: 0.6 },
+
+  // Edit payment modal
+  editOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  editCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: SIZES.radiusLg,
+    padding: 24,
+    width: '100%',
+    maxWidth: 360,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    elevation: 16,
+  },
+  editTitle: { fontSize: SIZES.lg, color: COLORS.navy, ...FONTS.extraBold, marginBottom: 2 },
+  editSubtitle: { fontSize: SIZES.sm, color: COLORS.gray, marginBottom: 20 },
+  editLabel: {
+    fontSize: SIZES.xs, color: COLORS.gray, ...FONTS.bold,
+    letterSpacing: 1.2, marginBottom: 8,
+  },
+  editInput: {
+    backgroundColor: COLORS.lightBg,
+    borderRadius: SIZES.radiusSm,
+    height: 52,
+    paddingHorizontal: 16,
+    fontSize: 22,
+    color: COLORS.navy,
+    ...FONTS.extraBold,
+    marginBottom: 24,
+  },
+  editActions: { flexDirection: 'row', gap: 10 },
+  editCancelBtn: {
+    flex: 1, height: 48, borderRadius: SIZES.radiusSm,
+    borderWidth: 1.5, borderColor: COLORS.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  editCancelText: { fontSize: SIZES.md, color: COLORS.gray, ...FONTS.semiBold },
+  editConfirmBtn: {
+    flex: 1, height: 48, borderRadius: SIZES.radiusSm,
+    backgroundColor: COLORS.navy,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  editConfirmText: { fontSize: SIZES.md, color: COLORS.white, ...FONTS.bold },
 });

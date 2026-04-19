@@ -119,7 +119,23 @@ export default function ClientDashboardScreen({ route, navigation }) {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+  // Track screen focus so the polling interval only runs while on this screen
+  const isFocused = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      isFocused.current = true;
+      loadData();
+      return () => { isFocused.current = false; };
+    }, [loadData])
+  );
+
+  // Poll every 5 s so admin-approved proofs show up without any user action
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (isFocused.current) loadData(true);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [loadData]);
 
   const handleRefresh = () => {
     setRefreshing(true);

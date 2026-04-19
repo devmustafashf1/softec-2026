@@ -145,6 +145,17 @@ export const api = {
     });
   },
 
+  async updateUserPayment(id, total_balance) {
+    return request(`/users/${id}/payment`, {
+      method: 'PATCH',
+      body: JSON.stringify({ total_balance }),
+    });
+  },
+
+  async deleteUser(id) {
+    return request(`/users/${id}`, { method: 'DELETE' });
+  },
+
   // ── Dashboard ─────────────────────────────────────────────
   async getDashboardStats() {
     return request('/accounts/stats');

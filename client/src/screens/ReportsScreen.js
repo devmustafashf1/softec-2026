@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
   Dimensions,
+  Animated,
   ActivityIndicator,
   Alert,
   TouchableOpacity,
@@ -33,6 +34,162 @@ function fmt(n) {
   if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
   if (v >= 1_000)     return `$${(v / 1_000).toFixed(1)}K`;
   return `$${v.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
+}
+
+function useShimmer() {
+  const anim = useRef(new Animated.Value(0.4)).current;
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(anim, { toValue: 1, duration: 750, useNativeDriver: true }),
+        Animated.timing(anim, { toValue: 0.4, duration: 750, useNativeDriver: true }),
+      ])
+    ).start();
+  }, [anim]);
+  return anim;
+}
+
+function SkeletonBox({ width, height, style }) {
+  const opacity = useShimmer();
+  return (
+    <Animated.View
+      style={[{ width, height, borderRadius: 6, backgroundColor: '#E2E8F0', opacity }, style]}
+    />
+  );
+}
+
+function ReportsSkeleton() {
+  return (
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+
+      {/* Page Header */}
+      <View style={styles.pageHeader}>
+        <View style={{ gap: 8 }}>
+          <SkeletonBox width={60} height={10} />
+          <SkeletonBox width={140} height={28} />
+          <SkeletonBox width={100} height={28} />
+        </View>
+        <SkeletonBox width={110} height={38} style={{ borderRadius: 8, marginTop: 6 }} />
+      </View>
+
+      {/* Summary Row */}
+      <View style={styles.summaryRow}>
+        {[0, 1, 2].map((i) => (
+          <View key={i} style={[styles.summaryBox, i === 2 && { borderRightWidth: 0 }]}>
+            <SkeletonBox width={50} height={20} style={{ marginBottom: 6 }} />
+            <SkeletonBox width={64} height={9} />
+          </View>
+        ))}
+      </View>
+
+      {/* Recovery Rate Card */}
+      <View style={styles.card}>
+        <SkeletonBox width={110} height={10} style={{ marginBottom: 6 }} />
+        <SkeletonBox width={180} height={9}  style={{ marginBottom: 18 }} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+          <SkeletonBox width={90} height={44} style={{ borderRadius: 6 }} />
+          <SkeletonBox width={70} height={28} style={{ borderRadius: 20 }} />
+        </View>
+        <SkeletonBox width="100%" height={8} style={{ borderRadius: 4, marginBottom: 8 }} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 18 }}>
+          <SkeletonBox width={130} height={9} />
+          <SkeletonBox width={80}  height={9} />
+        </View>
+        <View style={{ flexDirection: 'row', borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 14 }}>
+          {[0, 1, 2].map((i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <View style={{ width: 1, backgroundColor: COLORS.border }} />}
+              <View style={{ flex: 1, alignItems: 'center', gap: 6 }}>
+                <SkeletonBox width={44} height={20} />
+                <SkeletonBox width={52} height={18} style={{ borderRadius: 4 }} />
+              </View>
+            </React.Fragment>
+          ))}
+        </View>
+      </View>
+
+      {/* Client Status Breakdown Card */}
+      <View style={styles.card}>
+        <SkeletonBox width={150} height={10} style={{ marginBottom: 6 }} />
+        <SkeletonBox width={200} height={9}  style={{ marginBottom: 14 }} />
+        {/* Donut placeholder */}
+        <View style={{ alignItems: 'center', marginVertical: 8 }}>
+          <SkeletonBox width={180} height={180} style={{ borderRadius: 90 }} />
+        </View>
+        {/* Legend rows */}
+        {[0, 1, 2, 3].map((i) => (
+          <View key={i}>
+            {i > 0 && <View style={{ height: 1, backgroundColor: COLORS.border }} />}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <SkeletonBox width={10} height={10} style={{ borderRadius: 5 }} />
+                <SkeletonBox width={60} height={12} />
+              </View>
+              <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                <SkeletonBox width={70} height={12} />
+                <SkeletonBox width={30} height={10} />
+              </View>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {/* Account Status Distribution Card */}
+      <View style={styles.card}>
+        <SkeletonBox width={180} height={10} style={{ marginBottom: 6 }} />
+        <SkeletonBox width={160} height={9}  style={{ marginBottom: 16 }} />
+        {[0, 1, 2, 3].map((i) => (
+          <View key={i} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 14 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', width: 80, gap: 7 }}>
+              <SkeletonBox width={8} height={8} style={{ borderRadius: 4 }} />
+              <SkeletonBox width={52} height={10} />
+            </View>
+            <SkeletonBox
+              width={`${[65, 40, 85, 30][i]}%`}
+              height={7}
+              style={{ flex: 1, borderRadius: 4, marginRight: 10 }}
+            />
+            <SkeletonBox width={20} height={10} />
+          </View>
+        ))}
+      </View>
+
+      {/* Payment Proof Submissions Card */}
+      <View style={styles.card}>
+        <SkeletonBox width={180} height={10} style={{ marginBottom: 6 }} />
+        <SkeletonBox width={200} height={9}  style={{ marginBottom: 14 }} />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          {[0, 1, 2].map((i) => (
+            <View key={i} style={{ flex: 1, borderRadius: 8, padding: 14, backgroundColor: COLORS.lightBg, alignItems: 'center', gap: 6 }}>
+              <SkeletonBox width={36} height={28} style={{ borderRadius: 4 }} />
+              <SkeletonBox width={52} height={9} />
+            </View>
+          ))}
+        </View>
+      </View>
+
+      {/* Overdue Accounts Card */}
+      <View style={styles.card}>
+        <SkeletonBox width={140} height={10} style={{ marginBottom: 6 }} />
+        <SkeletonBox width={200} height={9}  style={{ marginBottom: 14 }} />
+        {[0, 1, 2].map((i) => (
+          <View key={i}>
+            {i > 0 && <View style={{ height: 1, backgroundColor: COLORS.border }} />}
+            <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 12, gap: 12 }}>
+              <SkeletonBox width={38} height={38} style={{ borderRadius: 19 }} />
+              <View style={{ flex: 1, gap: 6 }}>
+                <SkeletonBox width={110} height={13} />
+                <SkeletonBox width={80}  height={10} />
+              </View>
+              <SkeletonBox width={55} height={14} />
+            </View>
+          </View>
+        ))}
+      </View>
+
+      <View style={{ height: 28 }} />
+    </ScrollView>
+  );
 }
 
 function PieChart({ slices, size = 180 }) {
@@ -146,7 +303,7 @@ export default function ReportsScreen({ navigation }) {
     return (
       <SafeAreaView style={styles.safe}>
         <TopNavBar navigation={navigation} />
-        <View style={styles.centered}><ActivityIndicator size="large" color={COLORS.navy} /></View>
+        <ReportsSkeleton />
       </SafeAreaView>
     );
   }
@@ -397,7 +554,6 @@ export default function ReportsScreen({ navigation }) {
 const styles = StyleSheet.create({
   safe:    { flex: 1, backgroundColor: COLORS.lightBg },
   scroll:  { paddingBottom: 16 },
-  centered:{ flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   pageHeader: {
     paddingHorizontal: 16, paddingTop: 18, paddingBottom: 4,

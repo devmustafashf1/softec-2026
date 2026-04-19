@@ -96,6 +96,57 @@ export async function createUser(req, res) {
   });
 }
 
+// ── PATCH /api/users/:id/payment ─────────────────────────────
+// Update a client's total_balance (payment amount)
+export async function updateUserPayment(req, res) {
+  const { id } = req.params;
+  const { total_balance } = req.body;
+
+  const amount = parseFloat(total_balance);
+  if (isNaN(amount) || amount < 0) {
+    return res.status(400).json({ error: 'total_balance must be a non-negative number' });
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .update({ total_balance: amount })
+    .eq('id', id)
+    .eq('role', 'client')
+    .select('id, total_balance')
+    .single();
+
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data)  return res.status(404).json({ error: 'User not found' });
+
+  return res.status(200).json({ total_balance: data.total_balance });
+}
+
+// ── DELETE /api/users/:id ─────────────────────────────────────
+// Permanently delete a client user from auth + profiles
+export async function deleteUser(req, res) {
+  const { id } = req.params;
+
+  // Verify it's a client before deleting
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('id, role')
+    .eq('id', id)
+    .eq('role', 'client')
+    .single();
+
+  if (!profile) {
+    return res.status(404).json({ error: 'Client user not found' });
+  }
+
+  // Delete auth user — cascades to profiles via DB trigger
+  const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(id);
+  if (authError) {
+    return res.status(500).json({ error: authError.message });
+  }
+
+  return res.status(200).json({ message: 'User deleted successfully' });
+}
+
 // ── PATCH /api/users/:id/status ───────────────────────────────
 // Toggle a client user's active/inactive state
 export async function toggleUserStatus(req, res) {
