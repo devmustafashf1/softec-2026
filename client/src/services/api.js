@@ -19,7 +19,7 @@ export const tokenStorage = {
 };
 
 // ── Base fetch wrapper ────────────────────────────────────────
-async function request(path, options = {}) {
+async function request(path, options = {}, isRetry = false) {
   const token = await tokenStorage.getToken();
 
   const headers = {
@@ -32,6 +32,28 @@ async function request(path, options = {}) {
     ...options,
     headers,
   });
+
+  // Auto-refresh token on 401 and retry once
+  if (res.status === 401 && !isRetry && path !== '/auth/refresh' && path !== '/auth/login') {
+    try {
+      const refresh_token = await tokenStorage.getRefreshToken();
+      if (refresh_token) {
+        const refreshRes = await fetch(`${BASE_URL}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token }),
+        });
+        if (refreshRes.ok) {
+          const refreshData = await refreshRes.json();
+          await tokenStorage.setToken(refreshData.token);
+          await tokenStorage.setRefreshToken(refreshData.refresh_token);
+          return request(path, options, true);
+        }
+      }
+    } catch {
+      // refresh failed — fall through to throw original error
+    }
+  }
 
   const data = await res.json();
 
