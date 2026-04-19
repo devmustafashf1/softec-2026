@@ -55,7 +55,8 @@ export async function submitPaymentProof(req, res) {
 export async function getAllPaymentProofs(req, res) {
   const { data, error } = await supabaseAdmin
     .from('payment_proofs')
-    .select('id, image_url, reference_number, note, status, created_at, profile_id, profiles(full_name, username)')
+    .select('id, image_url, reference_number, note, status, created_at, profile_id, profiles!inner(full_name, username, is_active)')
+    .eq('profiles.is_active', true)
     .order('created_at', { ascending: false });
 
   if (error) return res.status(500).json({ error: error.message });
@@ -77,15 +78,37 @@ export async function getPaymentProofs(req, res) {
   return res.status(200).json({ proofs: data || [] });
 }
 
+// ── DELETE /api/accounts/:id/payment-proofs/:proofId ─────────
+export async function deletePaymentProof(req, res) {
+  const { proofId } = req.params;
+
+  const { error } = await supabaseAdmin
+    .from('payment_proofs')
+    .delete()
+    .eq('id', proofId);
+
+  if (error) return res.status(500).json({ error: error.message });
+  return res.status(200).json({ success: true });
+}
+
 // ── PATCH /api/accounts/:id/payment-proofs/:proofId ──────────
 export async function updateProofStatus(req, res) {
-  const { proofId }  = req.params;
-  const { status }   = req.body;
+  const { id, proofId } = req.params;
+  const { status }      = req.body;
   const VALID = new Set(['PENDING', 'VERIFIED', 'REJECTED']);
 
   if (!VALID.has(status)) {
     return res.status(400).json({ error: 'status must be PENDING, VERIFIED, or REJECTED.' });
   }
+
+  // Fetch current status BEFORE updating so we can guard against double-verification
+  const { data: current } = await supabaseAdmin
+    .from('payment_proofs')
+    .select('status')
+    .eq('id', proofId)
+    .single();
+
+  const wasAlreadyVerified = current?.status === 'VERIFIED';
 
   const { data, error } = await supabaseAdmin
     .from('payment_proofs')
@@ -96,6 +119,27 @@ export async function updateProofStatus(req, res) {
 
   if (error) return res.status(500).json({ error: error.message });
   if (!data)  return res.status(404).json({ error: 'Proof not found.' });
+
+  // When verifying: mark account PAID and add to amount_paid — but only if not already verified
+  if (status === 'VERIFIED' && id && !wasAlreadyVerified) {
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('total_balance, amount_paid')
+      .eq('id', id)
+      .single();
+
+    if (profile) {
+      const newAmountPaid = (Number(profile.amount_paid) || 0) + (Number(profile.total_balance) || 0);
+      await supabaseAdmin
+        .from('profiles')
+        .update({
+          account_status:    'PAID',
+          last_payment_date: new Date().toISOString(),
+          amount_paid:       newAmountPaid,
+        })
+        .eq('id', id);
+    }
+  }
 
   return res.status(200).json({ proof: data });
 }

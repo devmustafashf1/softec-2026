@@ -123,6 +123,15 @@ export const api = {
     });
   },
 
+  // ── Dashboard ─────────────────────────────────────────────
+  async getDashboardStats() {
+    return request('/accounts/stats');
+  },
+
+  async getClientsByStatus(statuses) {
+    return request(`/accounts/clients?statuses=${statuses.join(',')}`);
+  },
+
   // ── Account management ────────────────────────────────────
   async changeAccountStatus(id, account_status) {
     return request(`/accounts/${id}/status`, {
@@ -189,6 +198,10 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ status }),
     });
+  },
+
+  async deletePaymentProof(id, proofId) {
+    return request(`/accounts/${id}/payment-proofs/${proofId}`, { method: 'DELETE' });
   },
 
   // Exchange refresh token for a new access token

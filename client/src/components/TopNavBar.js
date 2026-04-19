@@ -17,11 +17,10 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.78, 300);
 
 const MENU_ITEMS = [
-  { key: 'Dashboard', label: 'Dashboard',  icon: '⊞', desc: 'Portfolio overview', isTab: true  },
-  { key: 'Accounts',  label: 'Accounts',   icon: '🗂', desc: 'Manage accounts',   isTab: true  },
-  { key: 'Reports',   label: 'Reports',    icon: '📊', desc: 'Analytics & data',  isTab: true  },
-  { key: 'Messages',  label: 'Messages',   icon: '💬', desc: 'Communications',    isTab: true  },
-  { key: 'Payments',  label: 'Payments',   icon: '💳', desc: 'Payment records',   isTab: true  },
+  { key: 'Dashboard', label: 'Dashboard',  icon: '⊞', desc: 'Portfolio overview',   isTab: true  },
+  { key: 'Accounts',  label: 'Accounts',   icon: '🗂', desc: 'Manage accounts',     isTab: true  },
+  { key: 'Payments',  label: 'Payments',   icon: '💳', desc: 'Payment records',     isTab: true  },
+  { key: 'Reports',   label: 'Reports',    icon: '📊', desc: 'Analytics & data',    isTab: true  },
   { key: 'Users',     label: 'Users',      icon: '👥', desc: 'Manage client users', isTab: false },
 ];
 

@@ -18,12 +18,13 @@ import { COLORS, FONTS, SIZES } from '../constants/theme';
 import TopNavBar from '../components/TopNavBar';
 import { api } from '../services/api';
 
-const FILTERS = ['ALL', 'PENDING', 'VERIFIED', 'REJECTED'];
+const FILTERS = ['ALL', 'PENDING', 'VERIFIED'];
+// REJECTED proofs are hidden from admin view — they remain in DB so clients can see the rejection state
 
 const PROOF_STATUS = {
-  PENDING:  { bg: '#EBF5FB', text: '#2980B9' },
-  VERIFIED: { bg: '#EAFAF1', text: '#27AE60' },
-  REJECTED: { bg: '#FDECEA', text: '#E74C3C' },
+  PENDING:  { bg: '#EBF5FB', text: '#2980B9', label: 'In Review' },
+  VERIFIED: { bg: '#EAFAF1', text: '#27AE60', label: 'Verified'  },
+  REJECTED: { bg: '#FDECEA', text: '#E74C3C', label: 'Rejected'  },
 };
 
 function timeAgo(dateStr) {
@@ -35,118 +36,158 @@ function timeAgo(dateStr) {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-export default function PaymentsScreen({ navigation }) {
+export default function PaymentsScreen({ navigation, route }) {
+  const routeProfileId   = route.params?.profileId   ?? null;
+  const routeProfileName = route.params?.profileName  ?? null;
+  const routeInitFilter  = route.params?.initialFilter ?? 'ALL';
+
   const [proofs, setProofs]             = useState([]);
   const [loading, setLoading]           = useState(true);
   const [activeFilter, setActiveFilter] = useState('ALL');
-  const [updatingId, setUpdatingId]     = useState(null);
+  const [profileFilter, setProfileFilter] = useState(null); // { id, name }
+  const [actionId, setActionId]         = useState(null);
   const [previewUri, setPreviewUri]     = useState(null);
 
   useFocusEffect(
     useCallback(() => {
+      // Apply route params every time this tab comes into focus from a navigation push
+      if (routeProfileId) {
+        setProfileFilter({ id: routeProfileId, name: routeProfileName });
+        setActiveFilter(routeInitFilter);
+      } else {
+        setProfileFilter(null);
+        setActiveFilter('ALL');
+      }
+
       let active = true;
       setLoading(true);
       api.getAllPaymentProofs()
-        .then(({ proofs: data }) => { if (active) setProofs(data || []); })
+        .then(({ proofs: data }) => {
+          if (active) setProofs((data || []).filter((p) => p.status !== 'REJECTED'));
+        })
         .catch((err) => { if (active) Alert.alert('Error', err.message); })
         .finally(() => { if (active) setLoading(false); });
       return () => { active = false; };
-    }, [])
+    }, [routeProfileId, routeProfileName, routeInitFilter])
   );
 
-  const handleUpdateStatus = (proof, newStatus) => {
-    Alert.alert(
-      'Update Status',
-      `Mark this proof as ${newStatus}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: async () => {
-            setUpdatingId(proof.id);
-            try {
-              await api.updateProofStatus(proof.profile_id, proof.id, newStatus);
-              setProofs((prev) =>
-                prev.map((p) => p.id === proof.id ? { ...p, status: newStatus } : p)
-              );
-            } catch (err) {
-              Alert.alert('Error', err.message || 'Could not update status.');
-            } finally {
-              setUpdatingId(null);
-            }
-          },
+  const handleVerify = (proof) => {
+    Alert.alert('Verify Payment', 'Approve this payment? The client status will be set to PAID.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Approve',
+        onPress: async () => {
+          setActionId(proof.id);
+          try {
+            await api.updateProofStatus(proof.profile_id, proof.id, 'VERIFIED');
+            setProofs((prev) =>
+              prev.map((p) => p.id === proof.id ? { ...p, status: 'VERIFIED' } : p)
+            );
+          } catch (err) {
+            Alert.alert('Error', err.message || 'Could not verify proof.');
+          } finally {
+            setActionId(null);
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
+  const handleReject = (proof) => {
+    Alert.alert('Reject Proof', 'Reject this payment proof? The client will be notified to resubmit.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Reject',
+        style: 'destructive',
+        onPress: async () => {
+          setActionId(proof.id);
+          try {
+            await api.updateProofStatus(proof.profile_id, proof.id, 'REJECTED');
+            // Remove from admin view — client can still see the REJECTED state on their portal
+            setProofs((prev) => prev.filter((p) => p.id !== proof.id));
+          } catch (err) {
+            Alert.alert('Error', err.message || 'Could not reject proof.');
+          } finally {
+            setActionId(null);
+          }
+        },
+      },
+    ]);
+  };
+
+  const visibleProofs = profileFilter
+    ? proofs.filter((p) => p.profile_id === profileFilter.id)
+    : proofs;
+
   const filtered = activeFilter === 'ALL'
-    ? proofs
-    : proofs.filter((p) => p.status === activeFilter);
+    ? visibleProofs
+    : visibleProofs.filter((p) => p.status === activeFilter);
 
   const pendingCount = proofs.filter((p) => p.status === 'PENDING').length;
 
   const renderProof = ({ item }) => {
     const cfg        = PROOF_STATUS[item.status] || PROOF_STATUS.PENDING;
-    const isUpdating = updatingId === item.id;
+    const isBusy     = actionId === item.id;
     const clientName = item.profiles?.full_name || 'Unknown Client';
     const username   = item.profiles?.username   || '';
 
     return (
       <View style={styles.card}>
-        {/* Client info */}
-        <View style={styles.cardHeader}>
-          <View style={styles.clientInfo}>
-            <Text style={styles.clientName}>{clientName}</Text>
-            {username ? <Text style={styles.clientUsername}>@{username}</Text> : null}
-          </View>
-          <View style={styles.headerRight}>
-            <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
-              <Text style={[styles.statusText, { color: cfg.text }]}>{item.status}</Text>
+        {/* Thumbnail + info row */}
+        <View style={styles.cardRow}>
+          <TouchableOpacity
+            activeOpacity={0.85}
+            onPress={() => setPreviewUri(item.image_url)}
+            style={styles.thumbWrap}
+          >
+            <Image source={{ uri: item.image_url }} style={styles.thumb} resizeMode="cover" />
+            <View style={styles.zoomBadge}>
+              <Text style={styles.zoomIcon}>⤢</Text>
             </View>
+          </TouchableOpacity>
+
+          <View style={styles.info}>
+            <View style={styles.infoTop}>
+              <Text style={styles.clientName} numberOfLines={1}>{clientName}</Text>
+              <View style={[styles.statusBadge, { backgroundColor: cfg.bg }]}>
+                <Text style={[styles.statusText, { color: cfg.text }]}>{cfg.label}</Text>
+              </View>
+            </View>
+            {username ? <Text style={styles.clientUsername}>@{username}</Text> : null}
+
+            <View style={styles.refRow}>
+              <Text style={styles.refLabel}>REF</Text>
+              <Text style={styles.refValue} numberOfLines={1}>{item.reference_number}</Text>
+            </View>
+            {item.note ? <Text style={styles.note} numberOfLines={2}>{item.note}</Text> : null}
+
             <Text style={styles.timeAgo}>{timeAgo(item.created_at)}</Text>
           </View>
         </View>
 
-        {/* Receipt image — tap to preview */}
-        <TouchableOpacity activeOpacity={0.9} onPress={() => setPreviewUri(item.image_url)}>
-          <Image source={{ uri: item.image_url }} style={styles.proofImage} resizeMode="cover" />
-          <View style={styles.tapHint}>
-            <Text style={styles.tapHintText}>🔍  Tap to view full image</Text>
-          </View>
-        </TouchableOpacity>
-
-        {/* Details */}
-        <View style={styles.cardBody}>
-          <Text style={styles.refLabel}>REF</Text>
-          <Text style={styles.refValue}>{item.reference_number}</Text>
-          {item.note ? <Text style={styles.note}>{item.note}</Text> : null}
-
-          {isUpdating ? (
-            <ActivityIndicator color={COLORS.navy} style={{ marginTop: 12 }} />
-          ) : (
-            <View style={styles.actions}>
-              {item.status !== 'VERIFIED' && (
-                <TouchableOpacity
-                  style={styles.verifyBtn}
-                  onPress={() => handleUpdateStatus(item, 'VERIFIED')}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.verifyBtnText}>✔  Verify</Text>
+        {/* Action buttons */}
+        {item.status === 'PENDING' && (
+          <View style={styles.actions}>
+            {isBusy ? (
+              <ActivityIndicator color={COLORS.navy} style={{ paddingVertical: 6 }} />
+            ) : (
+              <>
+                <TouchableOpacity style={styles.verifyBtn} onPress={() => handleVerify(item)} activeOpacity={0.8}>
+                  <Text style={styles.verifyBtnText}>✔  Approve</Text>
                 </TouchableOpacity>
-              )}
-              {item.status !== 'REJECTED' && (
-                <TouchableOpacity
-                  style={styles.rejectBtn}
-                  onPress={() => handleUpdateStatus(item, 'REJECTED')}
-                  activeOpacity={0.8}
-                >
+                <TouchableOpacity style={styles.rejectBtn} onPress={() => handleReject(item)} activeOpacity={0.8}>
                   <Text style={styles.rejectBtnText}>✕  Reject</Text>
                 </TouchableOpacity>
-              )}
-            </View>
-          )}
-        </View>
+              </>
+            )}
+          </View>
+        )}
+
+        {item.status === 'VERIFIED' && (
+          <View style={styles.verifiedBar}>
+            <Text style={styles.verifiedBarText}>✔  Payment approved — client marked PAID</Text>
+          </View>
+        )}
       </View>
     );
   };
@@ -181,6 +222,23 @@ export default function PaymentsScreen({ navigation }) {
         ))}
       </ScrollView>
 
+      {/* Active user filter banner */}
+      {profileFilter && (
+        <View style={styles.profileBanner}>
+          <View style={styles.profileBannerLeft}>
+            <Text style={styles.profileBannerIcon}>👤</Text>
+            <Text style={styles.profileBannerName} numberOfLines={1}>{profileFilter.name}</Text>
+          </View>
+          <TouchableOpacity
+            onPress={() => { setProfileFilter(null); setActiveFilter('ALL'); }}
+            style={styles.profileBannerClear}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.profileBannerClearText}>✕ Clear</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* List header */}
       <View style={styles.listHeader}>
         <Text style={styles.listTitle}>PAYMENT PROOFS</Text>
@@ -209,6 +267,7 @@ export default function PaymentsScreen({ navigation }) {
           }
         />
       )}
+
       {/* Full-screen image preview modal */}
       <Modal
         visible={!!previewUri}
@@ -240,9 +299,9 @@ const styles = StyleSheet.create({
   filterScroll: { flexGrow: 0, marginTop: 14, marginBottom: 10 },
   filterRow: { paddingHorizontal: 16, gap: 8, flexDirection: 'row', alignItems: 'center' },
   filterTab: {
-    height: 36,
-    paddingHorizontal: 18,
-    borderRadius: 18,
+    height: 34,
+    paddingHorizontal: 16,
+    borderRadius: 17,
     backgroundColor: COLORS.white,
     borderWidth: 1.5,
     borderColor: COLORS.border,
@@ -265,17 +324,39 @@ const styles = StyleSheet.create({
   },
   filterBadgeText: { fontSize: 10, color: COLORS.white, ...FONTS.bold },
 
+  profileBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginHorizontal: 16,
+    marginBottom: 10,
+    backgroundColor: COLORS.navy,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  profileBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+  profileBannerIcon: { fontSize: 14 },
+  profileBannerName: { color: COLORS.white, fontSize: SIZES.sm, ...FONTS.bold, flex: 1 },
+  profileBannerClear: {
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  profileBannerClearText: { color: COLORS.white, fontSize: SIZES.xs, ...FONTS.semiBold },
+
   listHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   listTitle: { fontSize: SIZES.xs, color: COLORS.gray, ...FONTS.bold, letterSpacing: 1.2 },
   listCount: { fontSize: SIZES.xs, color: COLORS.navy, ...FONTS.bold },
 
-  listContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 14 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 28, gap: 10 },
 
   card: {
     backgroundColor: COLORS.white,
@@ -287,32 +368,64 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  cardHeader: {
+
+  /* Compact horizontal layout */
+  cardRow: {
+    flexDirection: 'row',
+    padding: 12,
+    gap: 12,
+    alignItems: 'flex-start',
+  },
+  thumbWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 10,
+    overflow: 'hidden',
+    flexShrink: 0,
+  },
+  thumb: { width: '100%', height: '100%' },
+  zoomBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderRadius: 5,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  zoomIcon: { color: '#fff', fontSize: 11 },
+
+  info: { flex: 1, gap: 2 },
+  infoTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    padding: 14,
-    paddingBottom: 10,
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 2,
   },
-  clientInfo: { flex: 1, marginRight: 12 },
-  clientName: { fontSize: SIZES.md, color: COLORS.navy, ...FONTS.bold },
-  clientUsername: { fontSize: SIZES.xs, color: COLORS.gray, ...FONTS.medium, marginTop: 2 },
-  headerRight: { alignItems: 'flex-end', gap: 4 },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 5 },
-  statusText: { fontSize: SIZES.xs, ...FONTS.bold, letterSpacing: 0.4 },
-  timeAgo: { fontSize: SIZES.xs, color: COLORS.grayLight, ...FONTS.regular },
+  clientName: { flex: 1, fontSize: SIZES.sm, color: COLORS.navy, ...FONTS.bold },
+  clientUsername: { fontSize: SIZES.xs, color: COLORS.gray, ...FONTS.medium, marginBottom: 4 },
+  statusBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5, flexShrink: 0 },
+  statusText: { fontSize: 10, ...FONTS.bold, letterSpacing: 0.3 },
 
-  proofImage: { width: '100%', height: 200 },
+  refRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  refLabel: { fontSize: 10, color: COLORS.gray, ...FONTS.bold, letterSpacing: 0.8 },
+  refValue: { flex: 1, fontSize: SIZES.xs, color: COLORS.navy, ...FONTS.semiBold },
 
-  cardBody: { padding: 14 },
-  refLabel: { fontSize: SIZES.xs, color: COLORS.gray, ...FONTS.semiBold, letterSpacing: 1, marginBottom: 2 },
-  refValue: { fontSize: SIZES.md, color: COLORS.navy, ...FONTS.bold, marginBottom: 6 },
-  note: { fontSize: SIZES.sm, color: COLORS.gray, lineHeight: 18, marginBottom: 4 },
+  note: { fontSize: SIZES.xs, color: COLORS.gray, lineHeight: 16, marginTop: 2 },
+  timeAgo: { fontSize: 10, color: COLORS.grayLight, ...FONTS.regular, marginTop: 4 },
 
-  actions: { flexDirection: 'row', gap: 10, marginTop: 12 },
+  /* Action row */
+  actions: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    paddingTop: 0,
+  },
   verifyBtn: {
     flex: 1,
-    height: 40,
+    height: 36,
     borderRadius: 8,
     backgroundColor: '#EAFAF1',
     borderWidth: 1,
@@ -320,10 +433,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  verifyBtnText: { color: '#27AE60', fontSize: SIZES.sm, ...FONTS.bold },
+  verifyBtnText: { color: '#27AE60', fontSize: SIZES.xs, ...FONTS.bold },
   rejectBtn: {
     flex: 1,
-    height: 40,
+    height: 36,
     borderRadius: 8,
     backgroundColor: '#FDECEA',
     borderWidth: 1,
@@ -331,21 +444,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rejectBtnText: { color: '#E74C3C', fontSize: SIZES.sm, ...FONTS.bold },
+  rejectBtnText: { color: '#E74C3C', fontSize: SIZES.xs, ...FONTS.bold },
+
+  verifiedBar: {
+    backgroundColor: '#F0FFF4',
+    borderTopWidth: 1,
+    borderTopColor: '#C6F6D5',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    alignItems: 'center',
+  },
+  verifiedBarText: { fontSize: SIZES.xs, color: '#16A34A', ...FONTS.semiBold },
 
   emptyBox: { alignItems: 'center', paddingTop: 60 },
   emptyText: { color: COLORS.gray, fontSize: SIZES.md },
-
-  tapHint: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    paddingVertical: 6,
-    alignItems: 'center',
-  },
-  tapHintText: { color: '#fff', fontSize: SIZES.xs, ...FONTS.medium },
 
   previewOverlay: {
     flex: 1,

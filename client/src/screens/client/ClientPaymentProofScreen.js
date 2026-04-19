@@ -60,11 +60,7 @@ export default function ClientPaymentProofScreen({ route, navigation }) {
         referenceNumber: referenceNumber.trim(),
         note:            note.trim() || undefined,
       });
-      Alert.alert(
-        'Submitted',
-        'Your payment proof has been submitted for verification. You will be notified once reviewed.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }],
-      );
+      navigation.goBack();
     } catch (err) {
       Alert.alert('Upload Failed', err.message || 'Could not submit proof. Please try again.');
     } finally {

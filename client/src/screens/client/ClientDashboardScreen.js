@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Modal,
+  Animated,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -45,6 +46,30 @@ function initials(name) {
   return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 }
 
+// Animated tick circle shown when proof is submitted
+function SuccessTick({ visible }) {
+  const scale   = useRef(new Animated.Value(0)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.spring(scale, { toValue: 1, useNativeDriver: true, damping: 12, stiffness: 180 }),
+        Animated.timing(opacity, { toValue: 1, duration: 260, useNativeDriver: true }),
+      ]).start();
+    } else {
+      scale.setValue(0);
+      opacity.setValue(0);
+    }
+  }, [visible]);
+
+  return (
+    <Animated.View style={[styles.tickCircle, { transform: [{ scale }], opacity }]}>
+      <Text style={styles.tickIcon}>✓</Text>
+    </Animated.View>
+  );
+}
+
 export default function ClientDashboardScreen({ route, navigation }) {
   const routeUser = route?.params?.user;
   const [account, setAccount]           = useState(null);
@@ -76,9 +101,12 @@ export default function ClientDashboardScreen({ route, navigation }) {
       if (acc?.id) {
         try {
           const { proofs } = await api.getPaymentProofs(acc.id);
-          const pending  = proofs?.find((p) => p.status === 'PENDING');
-          const verified = proofs?.find((p) => p.status === 'VERIFIED');
-          setLatestProof(pending || verified || proofs?.[0] || null);
+          const sorted = [...(proofs || [])].sort(
+            (a, b) => new Date(b.created_at) - new Date(a.created_at),
+          );
+          const pending  = sorted.find((p) => p.status === 'PENDING');
+          const rejected = sorted.find((p) => p.status === 'REJECTED');
+          setLatestProof(pending || rejected || sorted[0] || null);
         } catch {
           // non-critical
         }
@@ -98,11 +126,8 @@ export default function ClientDashboardScreen({ route, navigation }) {
     loadData(true);
   };
 
-  const handleBellPress = () => {
-    setNotifVisible(true);
-  };
-
-  const handleCloseNotif = async () => {
+  const handleBellPress   = () => setNotifVisible(true);
+  const handleCloseNotif  = async () => {
     setNotifVisible(false);
     const now = new Date().toISOString();
     setLastSeenTime(new Date(now));
@@ -124,6 +149,9 @@ export default function ClientDashboardScreen({ route, navigation }) {
     ]);
   };
 
+  const goToPayment = () =>
+    navigation.navigate('ClientPaymentProof', { profileId: routeUser?.id || account?.id });
+
   const totalBalance = Number(account?.total_balance || 0);
   const amountPaid   = Number(account?.amount_paid   || 0);
   const remaining    = totalBalance - amountPaid;
@@ -131,13 +159,137 @@ export default function ClientDashboardScreen({ route, navigation }) {
   const status       = account?.account_status || 'CURRENT';
   const statusCfg    = STATUS_CONFIG[status] || STATUS_FALLBACK;
 
+  const isPaid         = status === 'PAID';
+  const proofPending   = !isPaid && latestProof?.status === 'PENDING';
+  const proofRejected  = !isPaid && latestProof?.status === 'REJECTED';
+  const showBalanceCard = !isPaid && !proofPending;
+
+  // ── Main card rendering ───────────────────────────────────────
+  const renderMainCard = () => {
+    // State 1: Admin verified payment → No payment due
+    if (isPaid) {
+      return (
+        <View style={styles.stateCard}>
+          <View style={[styles.stateIconCircle, { backgroundColor: '#EAFAF1' }]}>
+            <Text style={styles.stateIconText}>✓</Text>
+          </View>
+          <Text style={styles.stateTitle}>No Payment Due</Text>
+          <Text style={styles.stateSub}>
+            Your payment has been verified by your account manager. You are all caught up.
+          </Text>
+          <View style={styles.statePillRow}>
+            <View style={[styles.statePill, { backgroundColor: '#EAFAF1' }]}>
+              <Text style={[styles.statePillText, { color: '#27AE60' }]}>PAID</Text>
+            </View>
+            {account?.next_review ? (
+              <View style={styles.statePill}>
+                <Text style={styles.statePillText}>Next: {account.next_review}</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      );
+    }
+
+    // State 2: Proof submitted, waiting for admin
+    if (proofPending) {
+      return (
+        <View style={styles.stateCard}>
+          <SuccessTick visible />
+          <Text style={styles.stateTitle}>Proof Sent to Admin</Text>
+          <Text style={styles.stateSub}>
+            Your payment proof has been submitted and is awaiting verification. We'll update your status once reviewed.
+          </Text>
+          <View style={styles.proofDetailBox}>
+            <Text style={styles.proofDetailLabel}>REF</Text>
+            <Text style={styles.proofDetailValue}>{latestProof.reference_number}</Text>
+          </View>
+          <View style={styles.proofDetailBox}>
+            <Text style={styles.proofDetailLabel}>SUBMITTED</Text>
+            <Text style={styles.proofDetailValue}>{timeAgo(latestProof.created_at)}</Text>
+          </View>
+          <Text style={styles.stateHint}>Pull down to refresh and check for updates.</Text>
+        </View>
+      );
+    }
+
+    // State 3: Proof rejected by admin
+    if (proofRejected) {
+      return (
+        <View style={[styles.stateCard, styles.stateCardRejected]}>
+          <View style={[styles.stateIconCircle, { backgroundColor: '#FDECEA' }]}>
+            <Text style={[styles.stateIconText, { color: '#E74C3C' }]}>✕</Text>
+          </View>
+          <Text style={[styles.stateTitle, { color: '#C0392B' }]}>Proof Rejected</Text>
+          <Text style={styles.stateSub}>
+            Your admin has rejected the submitted proof. Please verify your payment details and resubmit with a valid receipt.
+          </Text>
+          <View style={styles.stateMeta}>
+            <Text style={styles.stateMetaLabel}>AMOUNT DUE</Text>
+            <Text style={[styles.stateMetaValue, { color: '#E74C3C' }]}>{fmt(totalBalance)}</Text>
+          </View>
+          <TouchableOpacity style={styles.resubmitButton} onPress={goToPayment} activeOpacity={0.85}>
+            <Text style={styles.resubmitButtonText}>📋  Pay Again</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // State 4: Default — show balance card with pay button
+    return (
+      <View style={styles.balanceCard}>
+        <Text style={styles.balanceLabel}>TOTAL BALANCE DUE</Text>
+        <Text style={styles.balanceAmount}>{fmt(totalBalance)}</Text>
+        <View style={styles.statusRow}>
+          <View style={[styles.statusTag, { backgroundColor: statusCfg.bg }]}>
+            <Text style={[styles.statusText, { color: statusCfg.text }]}>{status}</Text>
+          </View>
+          {account?.next_review ? (
+            <Text style={styles.nextReview}>Next review: {account.next_review}</Text>
+          ) : null}
+        </View>
+
+        <View style={styles.progressSection}>
+          <View style={styles.progressHeader}>
+            <View>
+              <Text style={styles.progressLabel}>PROGRESS</Text>
+              <Text style={styles.progressValue}>{percent}% Collected</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+              <Text style={styles.progressLabel}>REMAINING</Text>
+              <Text style={styles.progressValueAlt}>{fmt(remaining)}</Text>
+            </View>
+          </View>
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${percent}%` }]} />
+          </View>
+        </View>
+
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>AMOUNT PAID</Text>
+            <Text style={styles.statValue}>{fmt(amountPaid)}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>OBLIGATION</Text>
+            <Text style={styles.statValue}>{fmt(totalBalance)}</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity style={styles.paidButton} onPress={goToPayment} activeOpacity={0.85}>
+          <Text style={styles.paidButtonIcon}>📋</Text>
+          <Text style={styles.paidButtonText}>I've Paid This</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safe}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Sovereign Ledger</Text>
         <View style={styles.headerRight}>
-          {/* Bell with badge */}
           <TouchableOpacity style={styles.bellBtn} onPress={handleBellPress} activeOpacity={0.7}>
             <Text style={styles.bellIcon}>🔔</Text>
             {unseenCount > 0 && (
@@ -153,12 +305,7 @@ export default function ClientDashboardScreen({ route, navigation }) {
       </View>
 
       {/* Notification modal */}
-      <Modal
-        visible={notifVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={handleCloseNotif}
-      >
+      <Modal visible={notifVisible} animationType="slide" transparent onRequestClose={handleCloseNotif}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalSheet}>
             <View style={styles.modalHeader}>
@@ -167,7 +314,6 @@ export default function ClientDashboardScreen({ route, navigation }) {
                 <Text style={styles.modalClose}>✕</Text>
               </TouchableOpacity>
             </View>
-
             <ScrollView showsVerticalScrollIndicator={false}>
               {followups.length === 0 ? (
                 <Text style={styles.emptyMsg}>No messages from your account manager yet.</Text>
@@ -212,81 +358,10 @@ export default function ClientDashboardScreen({ route, navigation }) {
           style={styles.scroll}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              colors={[COLORS.navy]}
-              tintColor={COLORS.navy}
-            />
+            <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} colors={[COLORS.navy]} tintColor={COLORS.navy} />
           }
         >
-          {/* Balance card */}
-          <View style={styles.balanceCard}>
-            <Text style={styles.balanceLabel}>TOTAL BALANCE DUE</Text>
-            <Text style={styles.balanceAmount}>{fmt(totalBalance)}</Text>
-            <View style={styles.statusRow}>
-              <View style={[styles.statusTag, { backgroundColor: statusCfg.bg }]}>
-                <Text style={[styles.statusText, { color: statusCfg.text }]}>{status}</Text>
-              </View>
-              {account?.next_review ? (
-                <Text style={styles.nextReview}>Next review: {account.next_review}</Text>
-              ) : null}
-            </View>
-
-            <View style={styles.progressSection}>
-              <View style={styles.progressHeader}>
-                <View>
-                  <Text style={styles.progressLabel}>PROGRESS</Text>
-                  <Text style={styles.progressValue}>{percent}% Collected</Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={styles.progressLabel}>REMAINING</Text>
-                  <Text style={styles.progressValueAlt}>{fmt(remaining)}</Text>
-                </View>
-              </View>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${percent}%` }]} />
-              </View>
-            </View>
-
-            <View style={styles.statsRow}>
-              <View style={styles.statCard}>
-                <Text style={styles.statLabel}>AMOUNT PAID</Text>
-                <Text style={styles.statValue}>{fmt(amountPaid)}</Text>
-              </View>
-              <View style={styles.statCard}>
-                <Text style={styles.statLabel}>OBLIGATION</Text>
-                <Text style={styles.statValue}>{fmt(totalBalance)}</Text>
-              </View>
-            </View>
-
-            {latestProof?.status === 'VERIFIED' ? (
-              <View style={styles.proofBannerVerified}>
-                <Text style={styles.proofBannerIcon}>✔</Text>
-                <View>
-                  <Text style={styles.proofBannerTitle}>Payment Verified</Text>
-                  <Text style={styles.proofBannerSub}>Your payment has been confirmed by admin.</Text>
-                </View>
-              </View>
-            ) : latestProof?.status === 'PENDING' ? (
-              <View style={styles.proofBannerPending}>
-                <Text style={styles.proofBannerIcon}>⏳</Text>
-                <View>
-                  <Text style={styles.proofBannerTitlePending}>Under Review</Text>
-                  <Text style={styles.proofBannerSub}>Your payment proof is awaiting admin verification.</Text>
-                </View>
-              </View>
-            ) : (
-              <TouchableOpacity
-                style={styles.paidButton}
-                onPress={() => navigation.navigate('ClientPaymentProof', { profileId: routeUser?.id || account?.id })}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.paidButtonIcon}>📋</Text>
-                <Text style={styles.paidButtonText}>I've Paid This</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          {renderMainCard()}
 
           {/* Followups section */}
           <View style={styles.section}>
@@ -333,8 +408,8 @@ export default function ClientDashboardScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  safe:    { flex: 1, backgroundColor: COLORS.lightBg },
-  centered:{ flex: 1, alignItems: 'center', justifyContent: 'center' },
+  safe:     { flex: 1, backgroundColor: COLORS.lightBg },
+  centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
   header: {
     flexDirection: 'row',
@@ -352,66 +427,113 @@ const styles = StyleSheet.create({
   bellIcon:    { fontSize: 20 },
   badge: {
     position: 'absolute',
-    top: -2,
-    right: -4,
-    minWidth: 18,
-    height: 18,
+    top: -2, right: -4,
+    minWidth: 18, height: 18,
     borderRadius: 9,
     backgroundColor: '#E74C3C',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
     paddingHorizontal: 4,
   },
   badgeText: { fontSize: 10, color: COLORS.white, ...FONTS.bold },
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 32, height: 32, borderRadius: 16,
     backgroundColor: COLORS.navy,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
   },
   avatarText: { fontSize: SIZES.sm, color: COLORS.white, ...FONTS.bold },
 
   /* Notification modal */
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   modalSheet: {
     backgroundColor: COLORS.white,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '80%',
+    borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    padding: 20, maxHeight: '80%',
   },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  modalTitle: { fontSize: SIZES.sm, color: COLORS.navy, ...FONTS.bold, letterSpacing: 1.2 },
-  modalClose: { fontSize: 18, color: COLORS.gray, paddingHorizontal: 4 },
-
-  notifCard: {
-    backgroundColor: COLORS.lightBg,
-    borderRadius: SIZES.radiusSm,
-    padding: 14,
-    marginBottom: 10,
-  },
-  notifCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  modalTitle:  { fontSize: SIZES.sm, color: COLORS.navy, ...FONTS.bold, letterSpacing: 1.2 },
+  modalClose:  { fontSize: 18, color: COLORS.gray, paddingHorizontal: 4 },
+  notifCard: { backgroundColor: COLORS.lightBg, borderRadius: SIZES.radiusSm, padding: 14, marginBottom: 10 },
+  notifCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   notifTime:    { fontSize: SIZES.xs, color: COLORS.grayLight, ...FONTS.regular },
   notifContent: { fontSize: SIZES.sm, color: COLORS.navy, lineHeight: 20, ...FONTS.regular },
 
   scroll: { flex: 1 },
 
+  /* ── State cards (pending / paid / rejected) ── */
+  stateCard: {
+    margin: 16,
+    backgroundColor: COLORS.white,
+    borderRadius: SIZES.radiusLg,
+    padding: 28,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  stateCardRejected: {
+    borderWidth: 1,
+    borderColor: '#F5C6C0',
+  },
+
+  /* Animated tick */
+  tickCircle: {
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: '#EAFAF1',
+    borderWidth: 3, borderColor: '#A9DFBF',
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 20,
+  },
+  tickIcon: { fontSize: 36, color: '#27AE60' },
+
+  /* State icon (static, for paid / rejected) */
+  stateIconCircle: {
+    width: 80, height: 80, borderRadius: 40,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 20,
+  },
+  stateIconText: { fontSize: 36, color: '#27AE60' },
+
+  stateTitle: { fontSize: SIZES.xl, color: COLORS.navy, ...FONTS.extraBold, textAlign: 'center', marginBottom: 10 },
+  stateSub:   { fontSize: SIZES.sm, color: COLORS.gray, textAlign: 'center', lineHeight: 20, marginBottom: 20 },
+  stateHint:  { fontSize: SIZES.xs, color: COLORS.grayLight, textAlign: 'center', marginTop: 16 },
+
+  statePillRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  statePill: {
+    paddingHorizontal: 12, paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: COLORS.lightBg,
+  },
+  statePillText: { fontSize: SIZES.xs, color: COLORS.gray, ...FONTS.bold, letterSpacing: 0.6 },
+
+  proofDetailBox: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  proofDetailLabel: { fontSize: SIZES.xs, color: COLORS.gray, ...FONTS.semiBold, letterSpacing: 0.8 },
+  proofDetailValue: { fontSize: SIZES.sm, color: COLORS.navy, ...FONTS.bold },
+
+  stateMeta: { alignItems: 'center', marginBottom: 20 },
+  stateMetaLabel: { fontSize: SIZES.xs, color: COLORS.gray, ...FONTS.semiBold, letterSpacing: 1, marginBottom: 4 },
+  stateMetaValue: { fontSize: 28, ...FONTS.extraBold },
+
+  resubmitButton: {
+    width: '100%',
+    backgroundColor: '#E74C3C',
+    borderRadius: SIZES.radiusSm,
+    height: 50,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resubmitButtonText: { color: COLORS.white, fontSize: SIZES.md, ...FONTS.bold },
+
+  /* ── Default balance card ── */
   balanceCard: {
     margin: 16,
     backgroundColor: COLORS.white,
@@ -423,12 +545,12 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  balanceLabel: { fontSize: SIZES.xs, color: COLORS.gray, letterSpacing: 1.2, ...FONTS.semiBold, marginBottom: 4 },
+  balanceLabel:  { fontSize: SIZES.xs, color: COLORS.gray, letterSpacing: 1.2, ...FONTS.semiBold, marginBottom: 4 },
   balanceAmount: { fontSize: 34, color: '#E74C3C', ...FONTS.extraBold, marginBottom: 8 },
-  statusRow:    { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 20 },
-  statusTag:    { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4 },
-  statusText:   { fontSize: SIZES.xs, ...FONTS.bold, letterSpacing: 0.5 },
-  nextReview:   { fontSize: SIZES.sm, color: COLORS.gray },
+  statusRow:     { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 20 },
+  statusTag:     { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4 },
+  statusText:    { fontSize: SIZES.xs, ...FONTS.bold, letterSpacing: 0.5 },
+  nextReview:    { fontSize: SIZES.sm, color: COLORS.gray },
 
   progressSection:  { marginBottom: 16 },
   progressHeader:   { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
@@ -448,48 +570,21 @@ const styles = StyleSheet.create({
     borderRadius: SIZES.radiusSm,
     height: 50,
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
     gap: 8,
   },
   paidButtonIcon: { fontSize: 16 },
   paidButtonText: { color: COLORS.white, fontSize: SIZES.md, ...FONTS.bold },
 
-  proofBannerVerified: {
-    backgroundColor: '#EAFAF1',
-    borderRadius: SIZES.radiusSm,
-    borderWidth: 1,
-    borderColor: '#A9DFBF',
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  proofBannerPending: {
-    backgroundColor: '#EBF5FB',
-    borderRadius: SIZES.radiusSm,
-    borderWidth: 1,
-    borderColor: '#AED6F1',
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  proofBannerIcon: { fontSize: 20 },
-  proofBannerTitle: { fontSize: SIZES.sm, color: '#27AE60', ...FONTS.bold, marginBottom: 2 },
-  proofBannerTitlePending: { fontSize: SIZES.sm, color: '#2980B9', ...FONTS.bold, marginBottom: 2 },
-  proofBannerSub: { fontSize: SIZES.xs, color: COLORS.gray, lineHeight: 16 },
-
+  /* Followups section */
   section: {
-    marginHorizontal: 16,
-    marginBottom: 16,
+    marginHorizontal: 16, marginBottom: 16,
     backgroundColor: COLORS.white,
     borderRadius: SIZES.radiusLg,
     padding: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
+    shadowOpacity: 0.05, shadowRadius: 8,
     elevation: 2,
   },
   sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
@@ -500,8 +595,7 @@ const styles = StyleSheet.create({
   followupCard: {
     borderRadius: SIZES.radiusSm,
     backgroundColor: COLORS.lightBg,
-    padding: 14,
-    marginBottom: 10,
+    padding: 14, marginBottom: 10,
   },
   followupHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   msgStatusBadge: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 5 },
@@ -509,18 +603,13 @@ const styles = StyleSheet.create({
   followupTime:   { fontSize: SIZES.xs, color: COLORS.grayLight, ...FONTS.regular },
 
   paymentDueRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 10,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border || '#EFEFEF',
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    marginBottom: 10, paddingBottom: 10,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border || '#EFEFEF',
   },
   paymentDueLabel: { fontSize: SIZES.xs, color: COLORS.gray, ...FONTS.semiBold, letterSpacing: 0.8 },
   paymentDueValue: { fontSize: SIZES.sm, color: COLORS.navy, ...FONTS.bold },
   daysLateChip:    { backgroundColor: '#FDECEA', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 4 },
   daysLateText:    { fontSize: SIZES.xs, color: '#E74C3C', ...FONTS.bold },
-
   followupContent: { fontSize: SIZES.sm, color: COLORS.navy, lineHeight: 20, ...FONTS.regular },
 });

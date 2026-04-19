@@ -3,7 +3,6 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import DashboardScreen from '../screens/DashboardScreen';
 import AccountsScreen from '../screens/AccountsScreen';
 import ReportsScreen from '../screens/ReportsScreen';
-import PlaceholderScreen from '../screens/PlaceholderScreen';
 import PaymentsScreen from '../screens/PaymentsScreen';
 import CustomTabBar from './CustomTabBar';
 
@@ -17,7 +16,6 @@ export default function MainTabs() {
     >
       <Tab.Screen name="Dashboard" component={DashboardScreen} />
       <Tab.Screen name="Accounts"  component={AccountsScreen} />
-      <Tab.Screen name="Messages"  component={PlaceholderScreen} />
       <Tab.Screen name="Payments"  component={PaymentsScreen} />
       <Tab.Screen name="Reports"   component={ReportsScreen} />
     </Tab.Navigator>

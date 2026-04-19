@@ -7,6 +7,7 @@ export async function listUsers(req, res) {
     .from('profiles')
     .select('id, full_name, username, email, company_name, total_balance, amount_paid, next_review, account_status, is_active, created_at')
     .eq('role', 'client')
+    .eq('is_active', true)
     .order('created_at', { ascending: false });
 
   if (error) {

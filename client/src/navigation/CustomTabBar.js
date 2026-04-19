@@ -5,7 +5,6 @@ import { COLORS, FONTS, SIZES } from '../constants/theme';
 const TABS = [
   { key: 'Dashboard', label: 'DASHBOARD',  icon: '⊞' },
   { key: 'Accounts',  label: 'ACCOUNTS',   icon: '🗂' },
-  { key: 'Messages',  label: 'MESSAGES',   icon: '💬' },
   { key: 'Payments',  label: 'PAYMENTS',   icon: '💳' },
   { key: 'Reports',   label: 'REPORTS',    icon: '📊' },
 ];

@@ -327,23 +327,49 @@ export default function AccountDetailScreen({ route, navigation }) {
             <Text style={styles.proofSummaryTitle}>PAYMENT PROOFS</Text>
             <View style={styles.proofSummaryRow}>
               {pendingProofs > 0 && (
-                <View style={styles.proofSummaryChip}>
-                  <View style={styles.proofSummaryDot} />
-                  <Text style={styles.proofSummaryText}>
-                    {pendingProofs} in review
-                  </Text>
-                </View>
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={() =>
+                    navigation.navigate('Main', {
+                      screen: 'Payments',
+                      params: { profileId: account.id, profileName: account.full_name || account.name, initialFilter: 'PENDING' },
+                    })
+                  }
+                >
+                  <View style={styles.proofSummaryChip}>
+                    <View style={styles.proofSummaryDot} />
+                    <Text style={styles.proofSummaryText}>{pendingProofs} in review</Text>
+                  </View>
+                </TouchableOpacity>
               )}
               {verifiedProofs > 0 && (
-                <View style={[styles.proofSummaryChip, styles.proofSummaryChipGreen]}>
-                  <Text style={styles.proofSummaryTextGreen}>
-                    ✔ {verifiedProofs} verified
-                  </Text>
-                </View>
+                <TouchableOpacity
+                  activeOpacity={0.75}
+                  onPress={() =>
+                    navigation.navigate('Main', {
+                      screen: 'Payments',
+                      params: { profileId: account.id, profileName: account.full_name || account.name, initialFilter: 'VERIFIED' },
+                    })
+                  }
+                >
+                  <View style={[styles.proofSummaryChip, styles.proofSummaryChipGreen]}>
+                    <Text style={styles.proofSummaryTextGreen}>✔ {verifiedProofs} verified</Text>
+                  </View>
+                </TouchableOpacity>
               )}
-              <Text style={styles.proofSummaryHint}>
-                See Payments tab for details
-              </Text>
+              <TouchableOpacity
+                activeOpacity={0.75}
+                onPress={() =>
+                  navigation.navigate('Main', {
+                    screen: 'Payments',
+                    params: { profileId: account.id, profileName: account.full_name || account.name, initialFilter: 'ALL' },
+                  })
+                }
+              >
+                <Text style={[styles.proofSummaryHint, styles.proofSummaryLink]}>
+                  View all →
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -649,6 +675,7 @@ const styles = StyleSheet.create({
   proofSummaryText: { fontSize: SIZES.xs, color: '#2980B9', ...FONTS.bold },
   proofSummaryTextGreen: { fontSize: SIZES.xs, color: '#27AE60', ...FONTS.bold },
   proofSummaryHint: { fontSize: SIZES.xs, color: COLORS.grayLight, ...FONTS.regular },
+  proofSummaryLink: { color: COLORS.navy, ...FONTS.semiBold },
 
   /* Send Modal */
   modalOverlay: {

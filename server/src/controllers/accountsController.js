@@ -94,6 +94,49 @@ ${toneInstruction}
 Write ONLY the message body (3–5 sentences). No subject line, no greeting header, no sign-off.`;
 }
 
+// ── GET /api/accounts/stats ──────────────────────────────────
+export async function getDashboardStats(req, res) {
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('id, full_name, username, company_name, total_balance, amount_paid, account_status, is_active')
+    .eq('role', 'client');
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  const all     = data || [];
+  const clients = all.filter(c => c.is_active);
+
+  const totalBalance = clients.reduce((s, c) => s + (Number(c.total_balance) || 0), 0);
+  // Include deactivated users' historical payments in the collected total
+  const totalPaid    = all.reduce((s, c) => s + (Number(c.amount_paid) || 0), 0);
+  const byStatus = { CURRENT: 0, PENDING: 0, OVERDUE: 0, PAID: 0 };
+  clients.forEach(c => { if (byStatus[c.account_status] !== undefined) byStatus[c.account_status]++; });
+
+  const overdueClients = clients
+    .filter(c => c.account_status === 'OVERDUE')
+    .slice(0, 3)
+    .map(c => ({ id: c.id, name: c.full_name, username: c.username, company: c.company_name, balance: c.total_balance }));
+
+  return res.status(200).json({ totalAccounts: clients.length, totalBalance, totalPaid, byStatus, overdueClients });
+}
+
+// ── GET /api/accounts/clients?statuses=OVERDUE,PENDING ───────
+export async function getClientsByStatus(req, res) {
+  const { statuses } = req.query;
+  const statusList = statuses ? statuses.split(',').map(s => s.trim().toUpperCase()) : ['OVERDUE', 'PENDING'];
+
+  const { data, error } = await supabaseAdmin
+    .from('profiles')
+    .select('id, full_name, username, email, company_name, total_balance, next_review, account_status, last_payment_date')
+    .eq('role', 'client')
+    .eq('is_active', true)
+    .in('account_status', statusList)
+    .order('account_status');
+
+  if (error) return res.status(500).json({ error: error.message });
+  return res.status(200).json({ clients: data || [] });
+}
+
 // ── PATCH /api/accounts/:id/status ───────────────────────────
 export async function changeAccountStatus(req, res) {
   const { id }           = req.params;
