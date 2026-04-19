@@ -16,7 +16,7 @@ import { COLORS, FONTS, SIZES } from '../constants/theme';
 import TopNavBar from '../components/TopNavBar';
 import { api } from '../services/api';
 
-const STATUS_CYCLE  = ['CURRENT', 'PENDING', 'OVERDUE', 'PAID'];
+const STATUS_CYCLE = ['CURRENT', 'PENDING', 'OVERDUE', 'PAID'];
 
 const STATUS_CONFIG = {
   CURRENT: { bg: '#EAFAF1', text: '#27AE60' },
@@ -53,6 +53,7 @@ export default function AccountDetailScreen({ route, navigation }) {
   const [sendModal, setSendModal]             = useState(null);
   const [emailEnabled, setEmailEnabled]       = useState(false);
   const [sending, setSending]                 = useState(false);
+  const [statusModal, setStatusModal]         = useState(false);
 
   const status    = account.account_status || account.status || 'CURRENT';
   const statusCfg = STATUS_CONFIG[status] || STATUS_BADGE_FALLBACK;
@@ -78,31 +79,18 @@ export default function AccountDetailScreen({ route, navigation }) {
     }, [loadMessages, account.id])
   );
 
-  const handleChangeStatus = async () => {
-    const currentIdx = STATUS_CYCLE.indexOf(status);
-    const nextStatus = STATUS_CYCLE[(currentIdx + 1) % STATUS_CYCLE.length];
-
-    Alert.alert(
-      'Change Status',
-      `Change status from ${status} → ${nextStatus}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Confirm',
-          onPress: async () => {
-            setStatusChanging(true);
-            try {
-              const { account_status } = await api.changeAccountStatus(account.id, nextStatus);
-              setAccount((prev) => ({ ...prev, account_status }));
-            } catch (err) {
-              Alert.alert('Error', err.message || 'Could not update status.');
-            } finally {
-              setStatusChanging(false);
-            }
-          },
-        },
-      ]
-    );
+  const handleSelectStatus = async (newStatus) => {
+    if (newStatus === status) { setStatusModal(false); return; }
+    setStatusModal(false);
+    setStatusChanging(true);
+    try {
+      const { account_status } = await api.changeAccountStatus(account.id, newStatus);
+      setAccount((prev) => ({ ...prev, account_status }));
+    } catch (err) {
+      Alert.alert('Error', err.message || 'Could not update status.');
+    } finally {
+      setStatusChanging(false);
+    }
   };
 
   const handleDeleteMessage = (msg) => {
@@ -223,16 +211,14 @@ export default function AccountDetailScreen({ route, navigation }) {
 
           <TouchableOpacity
             style={[styles.actionSecondary, styles.actionTertiary, statusChanging && styles.actionDisabled]}
-            onPress={handleChangeStatus}
+            onPress={() => setStatusModal(true)}
             disabled={statusChanging}
             activeOpacity={0.85}
           >
             {statusChanging ? (
               <ActivityIndicator color={COLORS.navy} />
             ) : (
-              <Text style={styles.actionSecondaryText}>
-                ⇄  Change Status  ({status} → {STATUS_CYCLE[(STATUS_CYCLE.indexOf(status) + 1) % STATUS_CYCLE.length]})
-              </Text>
+              <Text style={styles.actionSecondaryText}>⇄  Change Status</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -376,6 +362,46 @@ export default function AccountDetailScreen({ route, navigation }) {
 
         <View style={{ height: 32 }} />
       </ScrollView>
+
+      {/* ── Status Picker Modal ── */}
+      <Modal
+        visible={statusModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setStatusModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.statusPickerCard}>
+            <Text style={styles.statusPickerTitle}>Change Status</Text>
+            <Text style={styles.statusPickerSub}>Select a new status for this account</Text>
+            {STATUS_CYCLE.map((s) => {
+              const cfg = STATUS_CONFIG[s];
+              const isActive = s === status;
+              return (
+                <TouchableOpacity
+                  key={s}
+                  style={[styles.statusOption, isActive && styles.statusOptionActive]}
+                  onPress={() => handleSelectStatus(s)}
+                  activeOpacity={0.75}
+                >
+                  <View style={[styles.statusOptionDot, { backgroundColor: cfg.text }]} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.statusOptionLabel, { color: cfg.text }]}>{s}</Text>
+                  </View>
+                  {isActive && <Text style={[styles.statusOptionCheck, { color: cfg.text }]}>✓ Current</Text>}
+                </TouchableOpacity>
+              );
+            })}
+            <TouchableOpacity
+              style={styles.statusPickerClose}
+              onPress={() => setStatusModal(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.statusPickerCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Send Modal ── */}
       <Modal
@@ -676,6 +702,42 @@ const styles = StyleSheet.create({
   proofSummaryTextGreen: { fontSize: SIZES.xs, color: '#27AE60', ...FONTS.bold },
   proofSummaryHint: { fontSize: SIZES.xs, color: COLORS.grayLight, ...FONTS.regular },
   proofSummaryLink: { color: COLORS.navy, ...FONTS.semiBold },
+
+  /* Status Picker */
+  statusPickerCard: {
+    backgroundColor: COLORS.white,
+    borderRadius: SIZES.radiusLg,
+    padding: 20,
+    width: '100%',
+  },
+  statusPickerTitle: { fontSize: SIZES.lg, color: COLORS.navy, ...FONTS.extraBold, marginBottom: 4 },
+  statusPickerSub:   { fontSize: SIZES.xs, color: COLORS.gray, ...FONTS.regular, marginBottom: 16 },
+  statusOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: SIZES.radiusSm,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    marginBottom: 8,
+    backgroundColor: COLORS.lightBg,
+  },
+  statusOptionActive: { borderColor: COLORS.navy, backgroundColor: '#EEF2FF' },
+  statusOptionDot:   { width: 10, height: 10, borderRadius: 5 },
+  statusOptionLabel: { fontSize: SIZES.md, ...FONTS.bold, letterSpacing: 0.5 },
+  statusOptionCheck: { fontSize: SIZES.xs, ...FONTS.semiBold },
+  statusPickerClose: {
+    marginTop: 6,
+    height: 46,
+    borderRadius: SIZES.radiusSm,
+    borderWidth: 1.5,
+    borderColor: COLORS.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statusPickerCloseText: { fontSize: SIZES.md, color: COLORS.gray, ...FONTS.semiBold },
 
   /* Send Modal */
   modalOverlay: {

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS, FONTS, SIZES } from '../constants/theme';
+import { api } from '../services/api';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const DRAWER_WIDTH = Math.min(SCREEN_WIDTH * 0.78, 300);
@@ -28,8 +29,13 @@ export default function TopNavBar({ navigation, showBack = false }) {
   const insets = useSafeAreaInsets();
   const [drawerVisible, setDrawerVisible] = useState(false);
   const [profileVisible, setProfileVisible] = useState(false);
+  const [adminUser, setAdminUser] = useState(null);
   const drawerAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const fadeAnim  = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    api.me().then((data) => setAdminUser(data.user || data)).catch(() => {});
+  }, []);
 
   /* ── Drawer ── */
   const openDrawer = () => {
@@ -105,7 +111,9 @@ export default function TopNavBar({ navigation, showBack = false }) {
         <Text style={styles.navBrand}>SOVEREIGN LEDGER</Text>
 
         <TouchableOpacity onPress={() => setProfileVisible(true)} style={styles.avatar} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
-          <Text style={styles.avatarText}>A</Text>
+          <Text style={styles.avatarText}>
+            {adminUser?.full_name?.[0]?.toUpperCase() || adminUser?.email?.[0]?.toUpperCase() || 'A'}
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -176,11 +184,13 @@ export default function TopNavBar({ navigation, showBack = false }) {
           {/* User info */}
           <View style={styles.profileInfo}>
             <View style={styles.profileAvatar}>
-              <Text style={styles.profileAvatarText}>A</Text>
+              <Text style={styles.profileAvatarText}>
+                {adminUser?.full_name?.[0]?.toUpperCase() || adminUser?.email?.[0]?.toUpperCase() || 'A'}
+              </Text>
             </View>
             <View style={styles.profileTextCol}>
-              <Text style={styles.profileName}>Admin User</Text>
-              <Text style={styles.profileEmail}>admin@sovereign.io</Text>
+              <Text style={styles.profileName}>{adminUser?.full_name || 'Admin'}</Text>
+              <Text style={styles.profileEmail}>{adminUser?.email || ''}</Text>
             </View>
           </View>
 
