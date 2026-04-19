@@ -154,10 +154,14 @@ export default function ReportsScreen({ navigation }) {
   const { totalAccounts, totalBalance, totalPaid, byStatus, overdueClients } = stats;
 
   // ── Recovery Rate ──────────────────────────────────────────────
-  // Formula: amount already collected ÷ total obligation (collected + still outstanding)
-  // Represents what fraction of all money owed has been successfully recovered.
-  const totalObligated  = (Number(totalPaid) || 0) + (Number(totalBalance) || 0);
-  const recoveryRate    = totalObligated > 0
+  const totalObligated = (Number(totalPaid) || 0) + (Number(totalBalance) || 0);
+
+  // Headline: % of clients who have made at least one payment (always non-zero when any payment exists)
+  const clientsWithPayments      = clients.filter((c) => Number(c.amount_paid) > 0).length;
+  const paymentParticipationRate = totalAccounts > 0 ? (clientsWithPayments / totalAccounts) * 100 : 0;
+
+  // Monetary recovery for sub-metric
+  const monetaryRecoveryRate = totalObligated > 0
     ? ((Number(totalPaid) || 0) / totalObligated) * 100
     : 0;
 
@@ -165,18 +169,13 @@ export default function ReportsScreen({ navigation }) {
   const goodStanding    = (byStatus.CURRENT || 0) + (byStatus.PAID || 0);
   const clientHealthPct = totalAccounts > 0 ? (goodStanding / totalAccounts) * 100 : 0;
 
-  // Overdue exposure: outstanding balance on overdue accounts relative to total outstanding
-  const overdueCount    = byStatus.OVERDUE || 0;
-  const overduePct      = totalAccounts > 0 ? (overdueCount / totalAccounts) * 100 : 0;
+  // Overdue exposure
+  const overdueCount = byStatus.OVERDUE || 0;
+  const overduePct   = totalAccounts > 0 ? (overdueCount / totalAccounts) * 100 : 0;
 
-  // ── Capital allocation — balance breakdown by account status ──
-  const balanceByStatus = {};
-  clients.forEach((c) => {
-    const s = c.account_status || 'CURRENT';
-    balanceByStatus[s] = (balanceByStatus[s] || 0) + (Number(c.total_balance) || 0);
-  });
+  // ── Client status pie — count of clients per status ──
   const pieSlices = ['CURRENT', 'PENDING', 'OVERDUE', 'PAID']
-    .map((s) => ({ value: balanceByStatus[s] || 0, color: (STATUS_CONFIG[s] || {}).color || COLORS.navy, label: (STATUS_CONFIG[s] || {}).label || s, status: s }))
+    .map((s) => ({ value: byStatus[s] || 0, color: STATUS_CONFIG[s].color, label: STATUS_CONFIG[s].label, status: s }))
     .filter((sl) => sl.value > 0);
 
   // ── Proof counts ───────────────────────────────────────────────
@@ -230,43 +229,36 @@ export default function ReportsScreen({ navigation }) {
         {/* ── Recovery Rate ── */}
         <View style={styles.card}>
           <Text style={styles.cardLabel}>RECOVERY RATE</Text>
-          <Text style={styles.cardSub}>Collected ÷ Total Obligation</Text>
+          <Text style={styles.cardSub}>Clients with active payments · monetary collection below</Text>
 
-          {totalObligated === 0 ? (
-            <View style={styles.noDataBox}>
-              <Text style={styles.noDataText}>No payment data recorded yet</Text>
+          <View style={styles.recoveryRow}>
+            <Text style={styles.recoveryBig}>{paymentParticipationRate.toFixed(1)}%</Text>
+            <View style={[
+              styles.rateChip,
+              { backgroundColor: paymentParticipationRate >= 50 ? '#EAFAF1' : '#FDECEA' },
+            ]}>
+              <Text style={[
+                styles.rateChipText,
+                { color: paymentParticipationRate >= 50 ? '#27AE60' : '#E74C3C' },
+              ]}>
+                {paymentParticipationRate >= 75 ? '↗ Strong' : paymentParticipationRate >= 50 ? '→ Moderate' : '↘ Low'}
+              </Text>
             </View>
-          ) : (
-            <>
-              <View style={styles.recoveryRow}>
-                <Text style={styles.recoveryBig}>{recoveryRate.toFixed(1)}%</Text>
-                <View style={[
-                  styles.rateChip,
-                  { backgroundColor: recoveryRate >= 50 ? '#EAFAF1' : '#FDECEA' },
-                ]}>
-                  <Text style={[
-                    styles.rateChipText,
-                    { color: recoveryRate >= 50 ? '#27AE60' : '#E74C3C' },
-                  ]}>
-                    {recoveryRate >= 75 ? '↗ Strong' : recoveryRate >= 50 ? '→ Moderate' : '↘ Low'}
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${Math.min(recoveryRate, 100)}%` }]} />
-              </View>
-              <View style={styles.progressLabels}>
-                <Text style={styles.progressLabelLeft}>{fmt(totalPaid)} recovered</Text>
-                <Text style={styles.progressLabelRight}>{fmt(totalObligated)} total</Text>
-              </View>
-            </>
-          )}
+          </View>
+
+          <View style={styles.progressTrack}>
+            <View style={[styles.progressFill, { width: `${Math.min(paymentParticipationRate, 100)}%` }]} />
+          </View>
+          <View style={styles.progressLabels}>
+            <Text style={styles.progressLabelLeft}>{clientsWithPayments} of {totalAccounts} clients paying</Text>
+            <Text style={styles.progressLabelRight}>{fmt(totalPaid)} collected</Text>
+          </View>
 
           {/* Sub-metrics */}
           <View style={styles.subMetricRow}>
             <View style={styles.subMetric}>
-              <Text style={styles.subMetricValue}>{clientHealthPct.toFixed(0)}%</Text>
-              <Text style={styles.subMetricLabel}>CLIENTS IN{'\n'}GOOD STANDING</Text>
+              <Text style={styles.subMetricValue}>{monetaryRecoveryRate.toFixed(2)}%</Text>
+              <Text style={styles.subMetricLabel}>MONETARY{'\n'}RECOVERY</Text>
             </View>
             <View style={styles.subMetricDivider} />
             <View style={styles.subMetric}>
@@ -277,28 +269,28 @@ export default function ReportsScreen({ navigation }) {
             </View>
             <View style={styles.subMetricDivider} />
             <View style={styles.subMetric}>
-              <Text style={styles.subMetricValue}>{goodStanding}</Text>
-              <Text style={styles.subMetricLabel}>CURRENT OR{'\n'}PAID</Text>
+              <Text style={styles.subMetricValue}>{clientHealthPct.toFixed(0)}%</Text>
+              <Text style={styles.subMetricLabel}>IN GOOD{'\n'}STANDING</Text>
             </View>
           </View>
         </View>
 
-        {/* ── Capital Allocation ── */}
+        {/* ── Client Status Breakdown ── */}
         <View style={styles.card}>
-          <Text style={styles.cardLabel}>CAPITAL ALLOCATION</Text>
-          <Text style={styles.cardSub}>Outstanding balance by account status</Text>
+          <Text style={styles.cardLabel}>CLIENT STATUS BREAKDOWN</Text>
+          <Text style={styles.cardSub}>Number of clients by payment status</Text>
 
           {pieSlices.length === 0 ? (
             <View style={styles.noDataBox}>
-              <Text style={styles.noDataText}>No balance data available</Text>
+              <Text style={styles.noDataText}>No client data available</Text>
             </View>
           ) : (
             <>
               <View style={styles.donutWrap}>
                 <PieChart slices={pieSlices} size={180} />
                 <View style={styles.donutCenter}>
-                  <Text style={styles.donutPct}>{fmt(totalBalance)}</Text>
-                  <Text style={styles.donutSub}>TOTAL DUE</Text>
+                  <Text style={styles.donutPct}>{totalAccounts}</Text>
+                  <Text style={styles.donutSub}>CLIENTS</Text>
                 </View>
               </View>
 
@@ -312,9 +304,9 @@ export default function ReportsScreen({ navigation }) {
                         <Text style={styles.capitalLabel}>{sl.label}</Text>
                       </View>
                       <View style={styles.capitalRight}>
-                        <Text style={[styles.capitalValue, { color: sl.color }]}>{fmt(sl.value)}</Text>
+                        <Text style={[styles.capitalValue, { color: sl.color }]}>{sl.value} client{sl.value !== 1 ? 's' : ''}</Text>
                         <Text style={styles.capitalPct}>
-                          {totalBalance > 0 ? `${Math.round((sl.value / totalBalance) * 100)}%` : '—'}
+                          {totalAccounts > 0 ? `${Math.round((sl.value / totalAccounts) * 100)}%` : '—'}
                         </Text>
                       </View>
                     </View>
